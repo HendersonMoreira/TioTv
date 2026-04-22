@@ -24,6 +24,7 @@ type CategoryPageViewProps = {
   currentUserName?: string;
   onOpenSettings?: () => void;
   onLogout?: () => void;
+  isItemLocked?: (item: MediaItem, type: 'movie' | 'tv' | 'anime') => boolean;
 };
 
 export function CategoryPageView({
@@ -47,6 +48,7 @@ export function CategoryPageView({
   currentUserName,
   onOpenSettings,
   onLogout,
+  isItemLocked,
 }: CategoryPageViewProps) {
   const buildPageNumbers = (): number[] => {
     if (totalPages <= 7) {
@@ -63,11 +65,20 @@ export function CategoryPageView({
     if (!onPlayItem) return;
     // Detectar tipo pela página atual
     let mediaType: 'movie' | 'tv' | 'anime' = 'movie';
-    if (title.toLowerCase().includes('série')) mediaType = 'tv';
+    if (title.toLowerCase().includes('série') || title.toLowerCase().includes('serie')) mediaType = 'tv';
     if (title.toLowerCase().includes('anime')) mediaType = 'anime';
 
     onPlayItem(item, mediaType);
   };
+
+  const resolveMediaType = (): 'movie' | 'tv' | 'anime' => {
+    const normalized = title.toLowerCase();
+    if (normalized.includes('série') || normalized.includes('serie')) return 'tv';
+    if (normalized.includes('anime')) return 'anime';
+    return 'movie';
+  };
+
+  const categoryMediaType = resolveMediaType();
 
   return (
     <div className="app-shell">
@@ -122,9 +133,10 @@ export function CategoryPageView({
           <div className="category-grid">
             {items.map((item, index) => {
               const isFavorite = favorites.includes(item.id);
+              const isLocked = isItemLocked?.(item, categoryMediaType) ?? false;
               return (
                 <article 
-                  className="movie-card" 
+                  className={isLocked ? 'movie-card locked' : 'movie-card'}
                   key={`${item.id}-${index}`}
                   onClick={() => handleItemClick(item)}
                   role="button"
@@ -155,6 +167,8 @@ export function CategoryPageView({
                     <h4>{getTitle(item)}</h4>
                     <span>{getYear(item)}</span>
                   </div>
+
+                  {isLocked && <span className="premium-lock-badge">Premium</span>}
                 </article>
               );
             })}

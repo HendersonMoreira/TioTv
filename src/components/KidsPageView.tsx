@@ -13,6 +13,7 @@ interface KidsPageViewProps {
   currentUserName?: string;
   onOpenSettings?: () => void;
   onLogout?: () => void;
+  isItemLocked?: (item: MediaItem, type: 'movie' | 'tv' | 'anime') => boolean;
 }
 
 export function KidsPageView({
@@ -25,6 +26,7 @@ export function KidsPageView({
   currentUserName,
   onOpenSettings,
   onLogout,
+  isItemLocked,
 }: KidsPageViewProps) {
   const ITEMS_PER_PAGE = 12;
   const [cartoonsPage, setCartoonsPage] = useState(1);
@@ -107,10 +109,12 @@ export function KidsPageView({
       <section className="kids-section">
         <h3>Desenhos e Animes</h3>
         <div className="kids-grid">
-          {pagedCartoons.map((item, index) => (
+          {pagedCartoons.map((item, index) => {
+            const isLocked = isItemLocked?.(item, 'anime') ?? false;
+            return (
             <article 
               key={`cartoon-${item.id}`} 
-              className="movie-card"
+              className={isLocked ? 'movie-card locked' : 'movie-card'}
               onClick={() => handleItemClick(item, 'anime')}
               role="button"
               tabIndex={0}
@@ -139,8 +143,9 @@ export function KidsPageView({
               >
                 <HeartIcon />
               </button>
+              {isLocked && <span className="premium-lock-badge">Premium</span>}
             </article>
-          ))}
+          )})}
         </div>
         {renderPagination(cartoonsPage, cartoonsTotalPages, setCartoonsPage)}
       </section>
@@ -148,10 +153,12 @@ export function KidsPageView({
       <section className="kids-section">
         <h3>Filmes para Familia</h3>
         <div className="kids-grid">
-          {pagedFamily.map((item, index) => (
+          {pagedFamily.map((item, index) => {
+            const isLocked = isItemLocked?.(item, 'movie') ?? false;
+            return (
             <article 
               key={`family-${item.id}`} 
-              className="movie-card"
+              className={isLocked ? 'movie-card locked' : 'movie-card'}
               onClick={() => handleItemClick(item, 'movie')}
               role="button"
               tabIndex={0}
@@ -180,8 +187,9 @@ export function KidsPageView({
               >
                 <HeartIcon />
               </button>
+              {isLocked && <span className="premium-lock-badge">Premium</span>}
             </article>
-          ))}
+          )})}
         </div>
         {renderPagination(familyPage, familyTotalPages, setFamilyPage)}
       </section>

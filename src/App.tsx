@@ -132,9 +132,6 @@ const isAllowedForFreeTier = (
   return getMediaYear(item) === FREE_TIER_YEAR;
 };
 
-const resolveMediaType = (item: MediaItem): 'movie' | 'tv' | 'anime' =>
-  item.content_type || (item.media_type === 'tv' ? 'tv' : 'movie');
-
 const KIDS_BLOCKED_TERMS = [
   'terror',
   'horror',
@@ -269,6 +266,8 @@ function App() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [isPremiumUser, setIsPremiumUser] = useState(false);
   const [premiumExpiresAt, setPremiumExpiresAt] = useState<Date | null>(null);
+  const [premiumUpsellOpen, setPremiumUpsellOpen] = useState(false);
+  const [premiumUpsellMessage, setPremiumUpsellMessage] = useState('Seja Premium e desbloqueie todo o catalogo. Nao perca essa chance. Assine nosso plano premium.');
   const [categoryItems, setCategoryItems] = useState<MediaItem[]>([]);
   const [categoryLoading, setCategoryLoading] = useState(false);
   const [categoryError, setCategoryError] = useState<string | null>(null);
@@ -371,16 +370,10 @@ function App() {
 
   const shouldRestrictByPlan = Boolean(authUser && !isPremiumUser);
 
-  const filterByPlan = (
-    items: MediaItem[],
+  const isItemPremiumLocked = (
+    item: MediaItem,
     mediaType: 'movie' | 'tv' | 'anime',
-  ): MediaItem[] => {
-    if (!shouldRestrictByPlan) {
-      return items;
-    }
-
-    return items.filter((item) => isAllowedForFreeTier(item, mediaType));
-  };
+  ): boolean => shouldRestrictByPlan && !isAllowedForFreeTier(item, mediaType);
 
   useEffect(() => {
     if (!authUser) return;
@@ -481,13 +474,7 @@ function App() {
         ]);
 
         if (!isMounted) return;
-        setCatalog({
-          filmes: filterByPlan(filmes, 'movie'),
-          terror: filterByPlan(terror, 'movie'),
-          familia: filterByPlan(familia, 'movie'),
-          animes: filterByPlan(animes, 'anime'),
-          series: filterByPlan(series, 'tv'),
-        });
+        setCatalog({ filmes, terror, familia, animes, series });
         setError(null);
       } catch (err) {
         if (!isMounted) return;
@@ -501,7 +488,7 @@ function App() {
     return () => {
       isMounted = false;
     };
-  }, [shouldRestrictByPlan]);
+  }, []);
 
   const heroItems = useMemo(() => catalog.filmes.slice(0, 5), [catalog.filmes]);
 
@@ -604,12 +591,10 @@ function App() {
       { id: 'series', title: 'Series para Maratonar', items: series, openCategory: true },
     );
 
-    if (!shouldRestrictByPlan) {
-      nextRows.splice(2, 0, { id: 'animes', title: 'Animes', items: desenhos, openCategory: true });
-    }
+    nextRows.splice(2, 0, { id: 'animes', title: 'Animes', items: desenhos, openCategory: true });
 
     return nextRows;
-  }, [authUser, catalog, watchHistory, shouldRestrictByPlan]);
+  }, [authUser, catalog, watchHistory]);
 
   useEffect(() => {
     if (!currentCategory && !currentGenreId) return;
@@ -633,13 +618,6 @@ function App() {
       try {
         setCategoryLoading(true);
 
-        if (shouldRestrictByPlan && config?.type === 'animes') {
-          setCategoryItems([]);
-          setCategoryTotalPages(1);
-          setCategoryError('Plano gratuito: animes disponiveis apenas para conta premium.');
-          return;
-        }
-
         const data = await loadCatalogPage(
           config?.type ?? 'filmes',
           categoryPage,
@@ -651,14 +629,7 @@ function App() {
           return;
         }
 
-        const resolvedType: 'movie' | 'tv' | 'anime' =
-          (config?.type ?? 'filmes') === 'animes'
-            ? 'anime'
-            : (config?.type ?? 'filmes') === 'series'
-              ? 'tv'
-              : 'movie';
-
-        setCategoryItems(filterByPlan(data.items, resolvedType));
+        setCategoryItems(data.items);
         const safeTotalPages = Math.min(Math.max(data.totalPages, 1), MAX_CATEGORY_PAGES);
         setCategoryTotalPages(safeTotalPages);
         setCategoryError(null);
@@ -677,7 +648,7 @@ function App() {
     return () => {
       isMounted = false;
     };
-  }, [currentCategory, currentGenreId, categoryPage, shouldRestrictByPlan]);
+  }, [currentCategory, currentGenreId, categoryPage]);
 
   const goToCategoryPage = (page: number) => {
     if (categoryLoading) return;
@@ -719,10 +690,7 @@ function App() {
       .map((entry) => entry.item);
 
     const localResults = ranked.slice(0, 20);
-    const filteredLocalResults = localResults.filter(
-      (item) => !shouldRestrictByPlan || isAllowedForFreeTier(item, resolveMediaType(item)),
-    );
-    setSearchResults(filteredLocalResults);
+    setSearchResults(localResults);
 
     const requestId = searchRequestIdRef.current + 1;
     searchRequestIdRef.current = requestId;
@@ -750,7 +718,6 @@ function App() {
           score: computeSearchScore(normalizedQuery, getTitle(item)),
         }))
         .filter((entry) => entry.score >= 0)
-        .filter((entry) => !shouldRestrictByPlan || isAllowedForFreeTier(entry.item, resolveMediaType(entry.item)))
         .sort((a, b) => b.score - a.score)
         .map((entry) => entry.item)
         .slice(0, 80);
@@ -852,8 +819,9 @@ function App() {
       return;
     }
 
-    if (shouldRestrictByPlan && !isAllowedForFreeTier(item, mediaType)) {
-      window.alert('Conta gratuita: liberado apenas filmes e series de 2025.');
+    if (isItemPremiumLocked(item, mediaType)) {
+      setPremiumUpsellMessage('Seja Premium e desbloqueie todo o catalogo. Nao perca essa chance. Assine nosso plano premium.');
+      setPremiumUpsellOpen(true);
       return;
     }
 
@@ -1006,28 +974,54 @@ function App() {
       ? movieGenres.find((genre) => genre.id === currentGenreId)?.name ?? `Genero ${currentGenreId}`
       : null;
     return (
-      <CategoryPageView
-        title={pageConfig?.title ?? `Filmes de ${currentGenreName}`}
-        items={categoryItems}
-        favorites={favorites}
-        loading={categoryLoading}
-        error={categoryError}
-        currentPage={categoryPage}
-        totalPages={categoryTotalPages}
-        onBack={closeCategoryPage}
-        onPageChange={goToCategoryPage}
-        onToggleFavorite={toggleFavorite}
-        onPlayItem={playContent}
-        searchOpen={searchOpen}
-        searchQuery={searchQuery}
-        searchResults={searchResults}
-        onSearchToggle={() => setSearchOpen((prev) => !prev)}
-        onSearchChange={handleSearch}
-        onSelectSearchItem={handleSearchItemSelect}
-        currentUserName={userFirstName}
-        onOpenSettings={openSettingsPage}
-        onLogout={handleLogout}
-      />
+      <>
+        <CategoryPageView
+          title={pageConfig?.title ?? `Filmes de ${currentGenreName}`}
+          items={categoryItems}
+          favorites={favorites}
+          loading={categoryLoading}
+          error={categoryError}
+          currentPage={categoryPage}
+          totalPages={categoryTotalPages}
+          onBack={closeCategoryPage}
+          onPageChange={goToCategoryPage}
+          onToggleFavorite={toggleFavorite}
+          onPlayItem={playContent}
+          searchOpen={searchOpen}
+          searchQuery={searchQuery}
+          searchResults={searchResults}
+          onSearchToggle={() => setSearchOpen((prev) => !prev)}
+          onSearchChange={handleSearch}
+          onSelectSearchItem={handleSearchItemSelect}
+          currentUserName={userFirstName}
+          onOpenSettings={openSettingsPage}
+          onLogout={handleLogout}
+          isItemLocked={isItemPremiumLocked}
+        />
+        {premiumUpsellOpen && (
+          <div className="premium-upsell-overlay" onClick={() => setPremiumUpsellOpen(false)}>
+            <div className="premium-upsell-modal" onClick={(e) => e.stopPropagation()}>
+              <h3>Conteudo Premium</h3>
+              <p>{premiumUpsellMessage}</p>
+              <div className="premium-upsell-actions">
+                <button type="button" className="ghost-account-btn" onClick={() => setPremiumUpsellOpen(false)}>
+                  Agora nao
+                </button>
+                <button
+                  type="button"
+                  className="account-btn"
+                  onClick={() => {
+                    setPremiumUpsellOpen(false);
+                    openSettingsPage();
+                  }}
+                >
+                  Quero ser Premium
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </>
     );
   }
 
@@ -1036,17 +1030,43 @@ function App() {
     const safeFamily = prioritizeKidsItems(catalog.familia.filter(isKidsSafeItem));
 
     return (
-      <KidsPageView
-        cartoons={safeCartoons}
-        family={safeFamily}
-        favorites={favorites}
-        onBack={closeCategoryPage}
-        onToggleFavorite={toggleFavorite}
-        onPlayItem={playContent}
-        currentUserName={userFirstName}
-        onOpenSettings={openSettingsPage}
-        onLogout={handleLogout}
-      />
+      <>
+        <KidsPageView
+          cartoons={safeCartoons}
+          family={safeFamily}
+          favorites={favorites}
+          onBack={closeCategoryPage}
+          onToggleFavorite={toggleFavorite}
+          onPlayItem={playContent}
+          currentUserName={userFirstName}
+          onOpenSettings={openSettingsPage}
+          onLogout={handleLogout}
+          isItemLocked={isItemPremiumLocked}
+        />
+        {premiumUpsellOpen && (
+          <div className="premium-upsell-overlay" onClick={() => setPremiumUpsellOpen(false)}>
+            <div className="premium-upsell-modal" onClick={(e) => e.stopPropagation()}>
+              <h3>Conteudo Premium</h3>
+              <p>{premiumUpsellMessage}</p>
+              <div className="premium-upsell-actions">
+                <button type="button" className="ghost-account-btn" onClick={() => setPremiumUpsellOpen(false)}>
+                  Agora nao
+                </button>
+                <button
+                  type="button"
+                  className="account-btn"
+                  onClick={() => {
+                    setPremiumUpsellOpen(false);
+                    openSettingsPage();
+                  }}
+                >
+                  Quero ser Premium
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </>
     );
   }
 
@@ -1168,6 +1188,30 @@ function App() {
           onSuccess={onAuthSuccess}
         />
 
+        {premiumUpsellOpen && (
+          <div className="premium-upsell-overlay" onClick={() => setPremiumUpsellOpen(false)}>
+            <div className="premium-upsell-modal" onClick={(e) => e.stopPropagation()}>
+              <h3>Conteudo Premium</h3>
+              <p>{premiumUpsellMessage}</p>
+              <div className="premium-upsell-actions">
+                <button type="button" className="ghost-account-btn" onClick={() => setPremiumUpsellOpen(false)}>
+                  Agora nao
+                </button>
+                <button
+                  type="button"
+                  className="account-btn"
+                  onClick={() => {
+                    setPremiumUpsellOpen(false);
+                    openSettingsPage();
+                  }}
+                >
+                  Quero ser Premium
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="hero-content">
           <p className="hero-kicker">Filmes Top 5</p>
           <h2>{currentHero ? getTitle(currentHero) : 'Carregando destaque...'}</h2>
@@ -1204,6 +1248,7 @@ function App() {
               onOpenCategory={row.openCategory ? (id) => openCategoryPage(id as CategoryPageId) : undefined}
               onPlayItem={playContent}
               onRemoveItem={row.id === 'continue-watching' ? removeFromContinueWatching : undefined}
+              isItemLocked={isItemPremiumLocked}
             />
           ))}
       </main>

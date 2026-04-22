@@ -507,10 +507,69 @@ a {
   transform: translateY(-4px) scale(1.015);
 }
 
+.movie-card.locked img {
+  filter: saturate(0.72) brightness(0.65);
+}
+
 .movie-card img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.premium-lock-badge {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  z-index: 3;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: #1a2138;
+  background: linear-gradient(100deg, #ffd36a, #f9b233);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.premium-upsell-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2200;
+  background: rgba(0, 0, 0, 0.68);
+  backdrop-filter: blur(5px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.premium-upsell-modal {
+  width: min(460px, 94vw);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: linear-gradient(160deg, #141c35 0%, #0c1225 100%);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+  padding: 22px;
+}
+
+.premium-upsell-modal h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-family: 'Space Grotesk', sans-serif;
+}
+
+.premium-upsell-modal p {
+  margin: 10px 0 0;
+  color: #d8e1f5;
+  line-height: 1.45;
+}
+
+.premium-upsell-actions {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .card-gradient {

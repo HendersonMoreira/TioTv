@@ -12,6 +12,7 @@ type ContentRowProps = {
   onOpenCategory?: (id: string) => void;
   onPlayItem?: (item: MediaItem, type: 'movie' | 'tv' | 'anime') => void;
   onRemoveItem?: (item: MediaItem) => void;
+  isItemLocked?: (item: MediaItem, type: 'movie' | 'tv' | 'anime') => boolean;
 };
 
 export function ContentRow({
@@ -23,6 +24,7 @@ export function ContentRow({
   onOpenCategory,
   onPlayItem,
   onRemoveItem,
+  isItemLocked,
 }: ContentRowProps) {
   const trackRef = useRef<HTMLDivElement | null>(null);
 
@@ -65,9 +67,14 @@ export function ContentRow({
         <div className="row-track" ref={trackRef}>
           {items.map((item, index) => {
             const isFavorite = favorites.includes(item.id);
+            let mediaType: 'movie' | 'tv' | 'anime' = item.content_type || 'movie';
+            if (id === 'series' || id === 'ficcao') mediaType = 'tv';
+            if (id === 'desenhos' || id === 'animes') mediaType = 'anime';
+            const isLocked = isItemLocked?.(item, mediaType) ?? false;
+
             return (
               <article 
-                className="movie-card" 
+                className={isLocked ? 'movie-card locked' : 'movie-card'}
                 key={`${item.id}-${index}`}
                 onClick={() => handleItemClick(item)}
                 role="button"
@@ -112,6 +119,8 @@ export function ContentRow({
                   <h4>{getTitle(item)}</h4>
                   <span>{getYear(item)}</span>
                 </div>
+
+                {isLocked && <span className="premium-lock-badge">Premium</span>}
               </article>
             );
           })}
