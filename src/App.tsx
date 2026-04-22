@@ -263,6 +263,7 @@ function App() {
   const [movieGenres, setMovieGenres] = useState<MovieGenre[]>([]);
   const [genresOpen, setGenresOpen] = useState(false);
   const [registerOpen, setRegisterOpen] = useState(false);
+  const [registerContextMessage, setRegisterContextMessage] = useState<string | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState<boolean>(() => isSettingsHash());
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
@@ -817,16 +818,23 @@ function App() {
 
   const openLoginModal = () => {
     setRegisterOpen(false);
+    setRegisterContextMessage(null);
     setLoginOpen(true);
   };
 
-  const openRegisterModal = () => {
+  const openRegisterModal = (message?: string) => {
     setLoginOpen(false);
+    setRegisterContextMessage(message ?? null);
     setRegisterOpen(true);
   };
 
-  const onAuthSuccess = () => {
+  const closeRegisterModal = () => {
     setRegisterOpen(false);
+    setRegisterContextMessage(null);
+  };
+
+  const onAuthSuccess = () => {
+    closeRegisterModal();
     setLoginOpen(false);
   };
 
@@ -839,6 +847,11 @@ function App() {
   };
 
   const playContent = async (item: MediaItem, mediaType: 'movie' | 'tv' | 'anime') => {
+    if (!authUser) {
+      openRegisterModal('Voce precisa criar uma conta para assistir aos filmes e series.');
+      return;
+    }
+
     if (shouldRestrictByPlan && !isAllowedForFreeTier(item, mediaType)) {
       window.alert('Conta gratuita: liberado apenas filmes e series de 2025.');
       return;
@@ -1119,7 +1132,7 @@ function App() {
             ) : (
               <>
                 <button className="ghost-account-btn" onClick={openLoginModal}>Entrar</button>
-                <button className="account-btn" onClick={openRegisterModal}>Criar Conta</button>
+                <button className="account-btn" onClick={() => openRegisterModal()}>Criar Conta</button>
               </>
             )}
           </div>
@@ -1143,14 +1156,15 @@ function App() {
 
         <RegisterModal
           open={registerOpen}
-          onClose={() => setRegisterOpen(false)}
+          contextMessage={registerContextMessage}
+          onClose={closeRegisterModal}
           onLogin={openLoginModal}
           onSuccess={onAuthSuccess}
         />
         <LoginModal
           open={loginOpen}
           onClose={() => setLoginOpen(false)}
-          onRegister={openRegisterModal}
+          onRegister={() => openRegisterModal()}
           onSuccess={onAuthSuccess}
         />
 

@@ -976,6 +976,17 @@ a {
   line-height: 1.4;
 }
 
+.register-context-msg {
+  margin: 0 0 16px;
+  border: 1px solid rgba(249, 178, 51, 0.45);
+  background: rgba(249, 178, 51, 0.12);
+  color: #ffe8b2;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
 .register-form {
   display: flex;
   flex-direction: column;

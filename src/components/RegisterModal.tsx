@@ -4,12 +4,13 @@ import { getAuthErrorMessage, registerWithEmail } from '../services/auth';
 
 interface RegisterModalProps {
   open: boolean;
+  contextMessage?: string | null;
   onClose: () => void;
   onLogin: () => void;
   onSuccess?: () => void;
 }
 
-export function RegisterModal({ open, onClose, onLogin, onSuccess }: RegisterModalProps) {
+export function RegisterModal({ open, contextMessage, onClose, onLogin, onSuccess }: RegisterModalProps) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -51,6 +52,8 @@ export function RegisterModal({ open, onClose, onLogin, onSuccess }: RegisterMod
           <h2 className="register-brand">TioTV</h2>
           <p className="register-subtitle">Crie sua conta e aproveite o melhor do entretenimento</p>
         </div>
+
+        {contextMessage && <p className="register-context-msg">{contextMessage}</p>}
 
         <form className="register-form" onSubmit={handleSubmit}>
           <div className="register-field">
