@@ -18,7 +18,7 @@ const SESSION_TTL_SECONDS = 24 * 60 * 60;
 const SESSION_TTL_MS = SESSION_TTL_SECONDS * 1000;
 const AUTH_FLOW_GRACE_MS = 15 * 1000;
 const DEVICE_SESSION_KEY = 'tiotv_device_session_id';
-const MAX_ACTIVE_SESSIONS = 2;
+const MAX_ACTIVE_SESSIONS = 3;
 
 let authFlowStartedAt = 0;
 
@@ -84,6 +84,12 @@ export const startAuthSessionTracking = (): (() => void) => {
     if (now - lastTouch < 60 * 1000) return;
     lastTouch = now;
     touchAuthSession();
+
+    if (auth.currentUser?.uid) {
+      syncSessionHeartbeat(auth.currentUser.uid).catch((err) => {
+        console.error('Falha ao sincronizar heartbeat da sessao', err);
+      });
+    }
   };
 
   const onVisibilityChange = () => {
@@ -178,6 +184,31 @@ const pruneExpiredSessions = (sessions: Record<string, number>, nowMs: number): 
     }
   }
   return cleaned;
+};
+
+const syncSessionHeartbeat = async (userId: string | null | undefined): Promise<void> => {
+  if (!userId) {
+    return;
+  }
+
+  const sessionId = getOrCreateDeviceSessionId();
+  const userRef = doc(db, 'Users', userId);
+
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(userRef);
+    const data = snap.data() as { activeSessions?: unknown } | undefined;
+    const nowMs = Date.now();
+    const activeSessions = pruneExpiredSessions(sanitizeActiveSessions(data?.activeSessions), nowMs);
+
+    activeSessions[sessionId] = nowMs;
+    tx.set(
+      userRef,
+      {
+        activeSessions,
+      },
+      { merge: true }
+    );
+  });
 };
 
 const reserveSessionSlot = async (user: User): Promise<void> => {
@@ -326,7 +357,12 @@ export const loginWithEmail = async (email: string, password: string): Promise<A
 };
 
 export const logout = async (): Promise<void> => {
-  await releaseSessionSlot(auth.currentUser?.uid);
+  try {
+    await releaseSessionSlot(auth.currentUser?.uid);
+  } catch (err) {
+    console.error('Falha ao liberar sessao durante logout', err);
+  }
+
   clearSessionCookie();
   await signOut(auth);
 };
@@ -371,8 +407,14 @@ export const subscribeToAuth = (callback: (user: AuthUser | null) => void): (() 
     if (!hasValidSessionCookie()) {
       if (isAuthFlowInGraceWindow()) {
         touchAuthSession();
+        syncSessionHeartbeat(user.uid).catch((err) => {
+          console.error('Falha ao restaurar heartbeat da sessao', err);
+        });
       } else {
         clearSessionCookie();
+        releaseSessionSlot(user.uid).catch((err) => {
+          console.error('Falha ao liberar sessao expirada', err);
+        });
         signOut(auth).catch((err) => {
           console.error('Falha ao encerrar sessao expirada', err);
         });
@@ -382,6 +424,9 @@ export const subscribeToAuth = (callback: (user: AuthUser | null) => void): (() 
     }
 
     touchAuthSession();
+    syncSessionHeartbeat(user.uid).catch((err) => {
+      console.error('Falha ao sincronizar sessao ativa', err);
+    });
 
     if (user) {
       upsertUserProfile(user).catch((err) => {
