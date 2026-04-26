@@ -18,6 +18,7 @@ import { PlayerPage } from './components/PlayerPage';
 import { RegisterModal } from './components/RegisterModal';
 import { SearchModal } from './components/SearchModal';
 import { AccountSettingsPage } from './components/AccountSettingsPage';
+import { UpdatesPage } from './components/UpdatesPage.tsx';
 import { GearIcon, SearchIcon } from './components/icons';
 import { logout, startAuthSessionTracking, subscribeToAuth, type AuthUser } from './services/auth';
 import { doc, onSnapshot, updateDoc, Timestamp } from 'firebase/firestore';
@@ -108,6 +109,7 @@ const parseGenreFromHash = (): number | null => {
 
 const isKidsHash = (): boolean => window.location.hash === '#/kids';
 const isSettingsHash = (): boolean => window.location.hash === '#/configuracoes';
+const isUpdatesHash = (): boolean => window.location.hash === '#/atualizacoes';
 
 const normalizeText = (value: string): string =>
   value
@@ -263,6 +265,7 @@ function App() {
   const [registerContextMessage, setRegisterContextMessage] = useState<string | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState<boolean>(() => isSettingsHash());
+  const [updatesOpen, setUpdatesOpen] = useState<boolean>(() => isUpdatesHash());
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [isPremiumUser, setIsPremiumUser] = useState(false);
   const [premiumExpiresAt, setPremiumExpiresAt] = useState<Date | null>(null);
@@ -431,6 +434,7 @@ function App() {
       setCurrentGenreId(parseGenreFromHash());
       setKidsPageOpen(isKidsHash());
       setSettingsOpen(isSettingsHash());
+      setUpdatesOpen(isUpdatesHash());
       setGenresOpen(false);
     };
 
@@ -771,16 +775,39 @@ function App() {
     section.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
+  const navigateToHomeSection = (rowId?: string) => {
+    const scrollAction = () => {
+      if (rowId) {
+        scrollToRow(rowId);
+        return;
+      }
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    if (window.location.hash) {
+      window.location.hash = '';
+      window.setTimeout(scrollAction, 90);
+      return;
+    }
+
+    scrollAction();
+  };
+
   const goToInicio = () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    navigateToHomeSection();
   };
 
   const goToFilmes = () => {
-    scrollToRow('terror');
+    navigateToHomeSection('terror');
   };
 
   const goToSeries = () => {
-    scrollToRow('series');
+    navigateToHomeSection('series');
+  };
+
+  const openUpdatesPage = () => {
+    window.location.hash = '#/atualizacoes';
   };
 
   const openLoginModal = () => {
@@ -1083,6 +1110,106 @@ function App() {
     );
   }
 
+  if (updatesOpen) {
+    return (
+      <div className="app-shell updates-page-shell">
+        <header className="top-nav">
+          <h1 className="brand">TioTV</h1>
+          <nav className="main-nav">
+            <button type="button" className="genres-nav-btn" onClick={goToInicio}>
+              Inicio
+            </button>
+            <button type="button" className="genres-nav-btn" onClick={goToFilmes}>
+              Filmes
+            </button>
+            <button type="button" className="genres-nav-btn" onClick={goToSeries}>
+              Series
+            </button>
+            <button type="button" className="genres-nav-btn" onClick={openKidsPage}>
+              Kids
+            </button>
+            <button
+              type="button"
+              className="genres-nav-btn"
+              onClick={() => setGenresOpen((prev) => !prev)}
+              aria-expanded={genresOpen}
+            >
+              Generos
+            </button>
+            <button
+              type="button"
+              className="genres-nav-btn active"
+              onClick={openUpdatesPage}
+            >
+              Atualizacoes
+            </button>
+          </nav>
+          <div className="nav-actions">
+            <button
+              className="circle-btn"
+              onClick={() => setSearchOpen(!searchOpen)}
+              aria-label="Buscar"
+            >
+              <SearchIcon />
+            </button>
+            {authUser ? (
+              <>
+                <span className="user-chip">
+                  Ola, {userFirstName}
+                </span>
+                <button
+                  className="gear-btn circle-btn"
+                  aria-label="Configuracoes do perfil"
+                  onClick={openSettingsPage}
+                >
+                  <GearIcon />
+                </button>
+                <button className="account-btn" onClick={handleLogout}>Sair</button>
+              </>
+            ) : (
+              <>
+                <button className="ghost-account-btn" onClick={openLoginModal}>Entrar</button>
+                <button className="account-btn" onClick={() => openRegisterModal()}>Criar Conta</button>
+              </>
+            )}
+          </div>
+
+          {searchOpen && (
+            <SearchModal
+              searchQuery={searchQuery}
+              searchResults={searchResults}
+              onSearchChange={handleSearch}
+              onSelectItem={handleSearchItemSelect}
+            />
+          )}
+        </header>
+
+        <GenresOverlay
+          open={genresOpen}
+          genres={movieGenres}
+          onClose={() => setGenresOpen(false)}
+          onSelectGenre={openGenrePage}
+        />
+
+        <UpdatesPage />
+
+        <RegisterModal
+          open={registerOpen}
+          contextMessage={registerContextMessage}
+          onClose={closeRegisterModal}
+          onLogin={openLoginModal}
+          onSuccess={onAuthSuccess}
+        />
+        <LoginModal
+          open={loginOpen}
+          onClose={() => setLoginOpen(false)}
+          onRegister={() => openRegisterModal()}
+          onSuccess={onAuthSuccess}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
       <section className="hero-section">
@@ -1125,6 +1252,13 @@ function App() {
               aria-expanded={genresOpen}
             >
               Generos
+            </button>
+            <button
+              type="button"
+              className="genres-nav-btn"
+              onClick={openUpdatesPage}
+            >
+              Atualizacoes
             </button>
           </nav>
           <div className="nav-actions">
