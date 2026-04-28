@@ -19,6 +19,7 @@ import { RegisterModal } from './components/RegisterModal';
 import { SearchModal } from './components/SearchModal';
 import { AccountSettingsPage } from './components/AccountSettingsPage';
 import { UpdatesPage } from './components/UpdatesPage.tsx';
+import { LiveFootballPage } from './components/LiveFootballPage';
 import { GearIcon, SearchIcon } from './components/icons';
 import { logout, startAuthSessionTracking, subscribeToAuth, type AuthUser } from './services/auth';
 import { doc, onSnapshot, updateDoc, Timestamp } from 'firebase/firestore';
@@ -110,6 +111,7 @@ const parseGenreFromHash = (): number | null => {
 const isKidsHash = (): boolean => window.location.hash === '#/kids';
 const isSettingsHash = (): boolean => window.location.hash === '#/configuracoes';
 const isUpdatesHash = (): boolean => window.location.hash === '#/atualizacoes';
+const isFootballChannelHash = (): boolean => window.location.hash === '#/futebol-aberto';
 
 const normalizeText = (value: string): string =>
   value
@@ -266,8 +268,10 @@ function App() {
   const [loginOpen, setLoginOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState<boolean>(() => isSettingsHash());
   const [updatesOpen, setUpdatesOpen] = useState<boolean>(() => isUpdatesHash());
+  const [footballChannelOpen, setFootballChannelOpen] = useState<boolean>(() => isFootballChannelHash());
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [isPremiumUser, setIsPremiumUser] = useState(false);
+  const [isPremiumPlusUser, setIsPremiumPlusUser] = useState(false);
   const [premiumExpiresAt, setPremiumExpiresAt] = useState<Date | null>(null);
   const [premiumUpsellOpen, setPremiumUpsellOpen] = useState(false);
   const [premiumUpsellMessage, setPremiumUpsellMessage] = useState('Seja Premium e desbloqueie todo o catalogo. Nao perca essa chance. Assine nosso plano premium.');
@@ -309,6 +313,7 @@ function App() {
   useEffect(() => {
     if (!authUser?.uid) {
       setIsPremiumUser(false);
+      setIsPremiumPlusUser(false);
       return;
     }
 
@@ -318,11 +323,21 @@ function App() {
       (snapshot) => {
         const data = snapshot.data() as {
           isPremium?: boolean;
+          isPremiumPlus?: boolean;
           premiumExpiresAt?: Timestamp | null;
           premiumActivatedAt?: Timestamp | null;
         } | undefined;
 
         const rawPremium = Boolean(data?.isPremium);
+        const rawPremiumPlus = Boolean(data?.isPremiumPlus);
+
+        if (snapshot.exists() && data?.isPremiumPlus === undefined) {
+          updateDoc(userRef, {
+            isPremiumPlus: false,
+          }).catch((err) => {
+            console.error('Falha ao definir padrao de premium plus', err);
+          });
+        }
 
         // Determinar data de expiracao
         let expiresAt: Date | null = null;
@@ -346,9 +361,11 @@ function App() {
           // Verificar se ja expirou
           if (expiresAt <= new Date()) {
             setIsPremiumUser(false);
+            setIsPremiumPlusUser(false);
             setPremiumExpiresAt(null);
             updateDoc(userRef, {
               isPremium: false,
+              isPremiumPlus: false,
               premiumExpiresAt: null,
             }).catch((err) => {
               console.error('Falha ao expirar premium', err);
@@ -357,11 +374,24 @@ function App() {
           }
         }
 
+        // Premium Plus segue a mesma validade do Premium.
+        if (!rawPremium && rawPremiumPlus) {
+          updateDoc(userRef, {
+            isPremiumPlus: false,
+          }).catch((err) => {
+            console.error('Falha ao sincronizar premium plus com premium', err);
+          });
+        }
+
+        const effectivePremiumPlus = rawPremium && rawPremiumPlus;
+
         setIsPremiumUser(rawPremium);
+        setIsPremiumPlusUser(effectivePremiumPlus);
         setPremiumExpiresAt(rawPremium ? expiresAt : null);
       },
       () => {
         setIsPremiumUser(false);
+        setIsPremiumPlusUser(false);
         setPremiumExpiresAt(null);
       },
     );
@@ -435,6 +465,7 @@ function App() {
       setKidsPageOpen(isKidsHash());
       setSettingsOpen(isSettingsHash());
       setUpdatesOpen(isUpdatesHash());
+      setFootballChannelOpen(isFootballChannelHash());
       setGenresOpen(false);
     };
 
@@ -809,6 +840,27 @@ function App() {
   const openUpdatesPage = () => {
     window.location.hash = '#/atualizacoes';
   };
+
+  const openFootballChannelPage = () => {
+    if (!isPremiumPlusUser) {
+      setPremiumUpsellMessage('Por favor, fala com o dono do site para se tornar PremiumPlus e liberar o Futebol Aberto.');
+      setPremiumUpsellOpen(true);
+      setGenresOpen(false);
+      return;
+    }
+
+    window.location.hash = '#/futebol-aberto';
+  };
+
+  useEffect(() => {
+    if (!footballChannelOpen || isPremiumPlusUser) {
+      return;
+    }
+
+    setPremiumUpsellMessage('Por favor, fala com o dono do site para se tornar PremiumPlus e liberar o Futebol Aberto.');
+    setPremiumUpsellOpen(true);
+    window.location.hash = '';
+  }, [footballChannelOpen, isPremiumPlusUser]);
 
   const openLoginModal = () => {
     setRegisterOpen(false);
@@ -1189,6 +1241,8 @@ function App() {
           genres={movieGenres}
           onClose={() => setGenresOpen(false)}
           onSelectGenre={openGenrePage}
+          hasPremiumPlus={isPremiumPlusUser}
+          onOpenFootballChannel={openFootballChannelPage}
         />
 
         <UpdatesPage />
@@ -1207,6 +1261,17 @@ function App() {
           onSuccess={onAuthSuccess}
         />
       </div>
+    );
+  }
+
+  if (footballChannelOpen) {
+    return (
+      <LiveFootballPage
+        onBack={() => { window.location.hash = ''; }}
+        currentUserName={userFirstName}
+        onOpenSettings={openSettingsPage}
+        onLogout={handleLogout}
+      />
     );
   }
 
@@ -1306,6 +1371,8 @@ function App() {
           genres={movieGenres}
           onClose={() => setGenresOpen(false)}
           onSelectGenre={openGenrePage}
+          hasPremiumPlus={isPremiumPlusUser}
+          onOpenFootballChannel={openFootballChannelPage}
         />
 
         <RegisterModal

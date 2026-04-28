@@ -6,9 +6,11 @@ type GenresOverlayProps = {
   genres: MovieGenre[];
   onClose: () => void;
   onSelectGenre: (genreId: number) => void;
+  hasPremiumPlus: boolean;
+  onOpenFootballChannel: () => void;
 };
 
-export function GenresOverlay({ open, genres, onClose, onSelectGenre }: GenresOverlayProps) {
+export function GenresOverlay({ open, genres, onClose, onSelectGenre, hasPremiumPlus, onOpenFootballChannel }: GenresOverlayProps) {
   if (!open) return null;
 
   return (
@@ -21,6 +23,13 @@ export function GenresOverlay({ open, genres, onClose, onSelectGenre }: GenresOv
           </button>
         </div>
         <div className="genres-list">
+          <button
+            type="button"
+            className="genre-chip"
+            onClick={onOpenFootballChannel}
+          >
+            Futebol Aberto {!hasPremiumPlus && <span aria-hidden="true">🔒</span>}
+          </button>
           {genres.map((genre) => (
             <button
               key={genre.id}
