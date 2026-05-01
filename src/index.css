@@ -1072,11 +1072,18 @@ a {
   margin: 0;
 }
 
+.updates-contact-actions {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .updates-whatsapp-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-top: 12px;
+  margin-top: 0;
   border: 1px solid rgba(40, 210, 130, 0.6);
   border-radius: 999px;
   background: linear-gradient(120deg, #1fa95f, #2fd58d);
@@ -1089,6 +1096,16 @@ a {
 .updates-whatsapp-btn:hover {
   transform: translateY(-1px);
   box-shadow: 0 8px 20px rgba(47, 213, 141, 0.25);
+}
+
+.updates-download-btn {
+  border-color: rgba(56, 186, 255, 0.65);
+  background: linear-gradient(120deg, #2da8ff, #60d3ff);
+  color: #06223a;
+}
+
+.updates-download-btn:hover {
+  box-shadow: 0 8px 20px rgba(45, 168, 255, 0.3);
 }
 
 .updates-footer-note {

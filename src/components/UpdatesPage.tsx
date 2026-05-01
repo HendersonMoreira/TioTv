@@ -1,4 +1,5 @@
 const WHATSAPP_LINK = 'https://wa.me/5521997932962?text=Ola%2C+vim+pela+pagina+de+atualizacoes+do+TioTV+e+quero+falar+sobre+pagamento.';
+const APK_DOWNLOAD_LINK = 'https://drive.google.com/drive/folders/1j4fzVSJ6XiKl-hgh4ZKo-7olAcszy1zz?usp=sharing';
 
 export function UpdatesPage() {
   return (
@@ -28,14 +29,24 @@ export function UpdatesPage() {
             Para falar comigo sobre pagamento, me chama no WhatsApp:
             <strong> 21 99793-2962</strong>
           </p>
-          <a
-            className="updates-whatsapp-btn"
-            href={WHATSAPP_LINK}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Falar no WhatsApp
-          </a>
+          <div className="updates-contact-actions">
+            <a
+              className="updates-whatsapp-btn"
+              href={WHATSAPP_LINK}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Falar no WhatsApp
+            </a>
+            <a
+              className="updates-whatsapp-btn updates-download-btn"
+              href={APK_DOWNLOAD_LINK}
+              target="_blank"
+              rel="noreferrer"
+            >
+              dowloand do apk celular e tv
+            </a>
+          </div>
         </div>
 
         <p className="updates-footer-note">

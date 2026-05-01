@@ -18,7 +18,7 @@ const SESSION_TTL_SECONDS = 24 * 60 * 60;
 const SESSION_TTL_MS = SESSION_TTL_SECONDS * 1000;
 const AUTH_FLOW_GRACE_MS = 15 * 1000;
 const DEVICE_SESSION_KEY = 'tiotv_device_session_id';
-const MAX_ACTIVE_SESSIONS = 3;
+const MAX_ACTIVE_SESSIONS = 2;
 
 let authFlowStartedAt = 0;
 

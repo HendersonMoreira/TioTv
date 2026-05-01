@@ -526,14 +526,36 @@ function App() {
   }, []);
 
   const heroItems = useMemo(() => catalog.filmes.slice(0, 5), [catalog.filmes]);
+  const firstHero = heroItems[0];
+  const firstHeroSrc = firstHero ? getBackdropUrlBySize(firstHero.backdrop_path, 'w1280', 0) : '';
+  const firstHeroSrcSet = firstHero
+    ? `${getBackdropUrlBySize(firstHero.backdrop_path, 'w500', 0)} 500w, ${getBackdropUrlBySize(firstHero.backdrop_path, 'w780', 0)} 780w, ${getBackdropUrlBySize(firstHero.backdrop_path, 'w1280', 0)} 1280w`
+    : '';
 
   useEffect(() => {
-    if (heroItems.length === 0) return;
-    const interval = window.setInterval(() => {
-      setHeroIndex((prev) => (prev + 1) % heroItems.length);
-    }, 6000);
+    if (!firstHeroSrc) return;
 
-    return () => window.clearInterval(interval);
+    const preloadLink = document.createElement('link');
+    preloadLink.rel = 'preload';
+    preloadLink.as = 'image';
+    preloadLink.href = firstHeroSrc;
+    preloadLink.setAttribute('data-hero-lcp-preload', 'true');
+    preloadLink.setAttribute('imagesrcset', firstHeroSrcSet);
+    preloadLink.setAttribute('imagesizes', '100vw');
+    document.head.appendChild(preloadLink);
+
+    return () => {
+      preloadLink.remove();
+    };
+  }, [firstHeroSrc, firstHeroSrcSet]);
+
+  useEffect(() => {
+    if (heroItems.length === 0) {
+      setHeroIndex(0);
+      return;
+    }
+
+    setHeroIndex((prev) => (prev >= heroItems.length ? 0 : prev));
   }, [heroItems.length]);
 
   const rows = useMemo<RowDefinition[]>(() => {
@@ -1030,6 +1052,11 @@ function App() {
     : undefined;
 
   const currentHero = heroItems[heroIndex];
+  const currentHeroSrc = currentHero ? getBackdropUrlBySize(currentHero.backdrop_path, 'w780', heroIndex) : '';
+  const currentHeroSrcSet = currentHero
+    ? `${getBackdropUrlBySize(currentHero.backdrop_path, 'w500', heroIndex)} 500w, ${getBackdropUrlBySize(currentHero.backdrop_path, 'w780', heroIndex)} 780w, ${getBackdropUrlBySize(currentHero.backdrop_path, 'w1280', heroIndex)} 1280w`
+    : '';
+  const isLcpHero = heroIndex === 0;
 
   // Renderizar player se aberto
   if (playerContent) {
@@ -1091,7 +1118,7 @@ function App() {
                   className="account-btn"
                   onClick={() => {
                     setPremiumUpsellOpen(false);
-                    openSettingsPage();
+                    openUpdatesPage();
                   }}
                 >
                   Quero ser Premium
@@ -1136,7 +1163,7 @@ function App() {
                   className="account-btn"
                   onClick={() => {
                     setPremiumUpsellOpen(false);
-                    openSettingsPage();
+                    openUpdatesPage();
                   }}
                 >
                   Quero ser Premium
@@ -1282,12 +1309,12 @@ function App() {
           <>
             <img
               className="hero-bg"
-              src={getBackdropUrlBySize(currentHero.backdrop_path, 'w780', heroIndex)}
-              srcSet={`${getBackdropUrlBySize(currentHero.backdrop_path, 'w500', heroIndex)} 500w, ${getBackdropUrlBySize(currentHero.backdrop_path, 'w780', heroIndex)} 780w, ${getBackdropUrlBySize(currentHero.backdrop_path, 'w1280', heroIndex)} 1280w`}
+              src={currentHeroSrc}
+              srcSet={currentHeroSrcSet}
               sizes="100vw"
               alt={getTitle(currentHero)}
-              loading="eager"
-              fetchPriority="high"
+              loading={isLcpHero ? 'eager' : 'lazy'}
+              fetchPriority={isLcpHero ? 'high' : 'auto'}
               decoding="async"
             />
             <div className="hero-overlay" />
@@ -1403,7 +1430,7 @@ function App() {
                   className="account-btn"
                   onClick={() => {
                     setPremiumUpsellOpen(false);
-                    openSettingsPage();
+                    openUpdatesPage();
                   }}
                 >
                   Quero ser Premium
