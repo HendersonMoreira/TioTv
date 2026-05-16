@@ -343,7 +343,7 @@ function App() {
   const [updatesOpen, setUpdatesOpen] = useState<boolean>(() => isUpdatesHash());
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [isPremiumUser, setIsPremiumUser] = useState(false);
-  const [isPremiumPlusUser, setIsPremiumPlusUser] = useState(false);
+  const [, setIsPremiumPlusUser] = useState(false);
   const [premiumExpiresAt, setPremiumExpiresAt] = useState<Date | null>(null);
   const [premiumUpsellOpen, setPremiumUpsellOpen] = useState(false);
   const [premiumUpsellMessage, setPremiumUpsellMessage] = useState('Seja Premium e desbloqueie todo o catalogo. Nao perca essa chance. Assine nosso plano premium.');
