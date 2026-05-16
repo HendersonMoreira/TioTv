@@ -316,6 +316,202 @@ const computeSearchScore = (queryRaw: string, titleRaw: string): number => {
   return -1;
 };
 
+type SearchIntent = {
+  wantsMovies: boolean;
+  wantsSeries: boolean;
+  wantsAnimes: boolean;
+  wantsCartoons: boolean;
+  wantsDisney: boolean;
+  wantsOld: boolean;
+  minYear?: number;
+  maxYear?: number;
+};
+
+const MOVIE_HINTS = ['filme', 'filmes', 'movie', 'movies', 'cinema'];
+const SERIES_HINTS = ['serie', 'series', 'seriado', 'seriados', 'tv'];
+const ANIME_HINTS = ['anime', 'animes', 'manga', 'otaku'];
+const CARTOON_HINTS = ['desenho', 'desenhos', 'animacao', 'animacoes', 'cartoon', 'cartoons', 'animado', 'animados'];
+const DISNEY_HINTS = ['disney', 'disney+', 'disney plus', 'pixar', 'marvel', 'star wars'];
+const OLD_HINTS = ['antigo', 'antiga', 'antigos', 'antigas', 'classico', 'classicos', 'retro', 'nostalgia', 'velho', 'velhos'];
+const ANIMATION_GENRE_ID = 16;
+const DISNEY_CONTENT_TERMS = [
+  'disney',
+  'pixar',
+  'marvel',
+  'star wars',
+  'avengers',
+  'mickey',
+  'minnie',
+  'frozen',
+  'moana',
+  'toy story',
+  'princesa',
+  'princess',
+];
+const SEARCH_FILLER_TERMS = new Set([
+  'de', 'da', 'do', 'das', 'dos', 'e', 'ou', 'a', 'o', 'as', 'os', 'um', 'uma', 'pra', 'para', 'com',
+  ...MOVIE_HINTS,
+  ...SERIES_HINTS,
+  ...ANIME_HINTS,
+  ...CARTOON_HINTS,
+  ...OLD_HINTS,
+]);
+const OLD_CONTENT_YEAR_CUTOFF = 2012;
+
+const includesAnyHint = (text: string, hints: string[]): boolean => hints.some((hint) => text.includes(hint));
+
+const parseSearchYearRange = (query: string): { minYear?: number; maxYear?: number } => {
+  const explicitYears = Array.from(query.matchAll(/\b(19\d{2}|20\d{2})\b/g))
+    .map((match) => Number.parseInt(match[1], 10))
+    .filter((year) => Number.isFinite(year));
+
+  if (explicitYears.length >= 2) {
+    const sorted = [...explicitYears].sort((a, b) => a - b);
+    return { minYear: sorted[0], maxYear: sorted[sorted.length - 1] };
+  }
+
+  if (explicitYears.length === 1) {
+    return { minYear: explicitYears[0], maxYear: explicitYears[0] };
+  }
+
+  const decadeMatch = query.match(/anos?\s*(60|70|80|90|2000|2010)/);
+  if (decadeMatch) {
+    const decade = Number.parseInt(decadeMatch[1], 10);
+    if (Number.isFinite(decade)) {
+      return { minYear: decade, maxYear: decade + 9 };
+    }
+  }
+
+  return {};
+};
+
+const detectSearchIntent = (queryRaw: string): SearchIntent => {
+  const query = normalizeText(queryRaw);
+  const yearRange = parseSearchYearRange(query);
+
+  return {
+    wantsMovies: includesAnyHint(query, MOVIE_HINTS),
+    wantsSeries: includesAnyHint(query, SERIES_HINTS),
+    wantsAnimes: includesAnyHint(query, ANIME_HINTS),
+    wantsCartoons: includesAnyHint(query, CARTOON_HINTS),
+    wantsDisney: includesAnyHint(query, DISNEY_HINTS),
+    wantsOld: includesAnyHint(query, OLD_HINTS),
+    minYear: yearRange.minYear,
+    maxYear: yearRange.maxYear,
+  };
+};
+
+const isLikelyAnimeItem = (item: MediaItem): boolean => {
+  if (item.content_type === 'anime') {
+    return true;
+  }
+
+  const mediaType = item.content_type || item.media_type || 'movie';
+  const genres = Array.isArray(item.genre_ids) ? item.genre_ids : [];
+  return mediaType === 'tv' && genres.includes(ANIMATION_GENRE_ID);
+};
+
+const isLikelyCartoonItem = (item: MediaItem): boolean => {
+  const genres = Array.isArray(item.genre_ids) ? item.genre_ids : [];
+  return genres.includes(ANIMATION_GENRE_ID);
+};
+
+const getItemMediaKind = (item: MediaItem): 'movie' | 'tv' | 'anime' => {
+  if (isLikelyAnimeItem(item)) {
+    return 'anime';
+  }
+
+  const mediaType = item.content_type || item.media_type || 'movie';
+  return mediaType === 'tv' ? 'tv' : 'movie';
+};
+
+const applySearchIntentFilters = (items: MediaItem[], intent: SearchIntent): MediaItem[] => {
+  let filtered = [...items];
+
+  if (intent.wantsAnimes) {
+    filtered = filtered.filter((item) => isLikelyAnimeItem(item));
+  } else if (intent.wantsCartoons) {
+    // desenhos = conteúdo animado (filmes e séries), mas não animes
+    filtered = filtered.filter((item) => isLikelyCartoonItem(item) && !isLikelyAnimeItem(item));
+  } else {
+    if (intent.wantsMovies && !intent.wantsSeries) {
+      filtered = filtered.filter((item) => getItemMediaKind(item) === 'movie');
+    }
+
+    if (intent.wantsSeries && !intent.wantsMovies) {
+      filtered = filtered.filter((item) => getItemMediaKind(item) === 'tv');
+    }
+  }
+
+  if (intent.wantsDisney) {
+    filtered = filtered.filter((item) => {
+      const text = normalizeText(`${item.title || ''} ${item.name || ''} ${item.overview || ''}`);
+      return DISNEY_CONTENT_TERMS.some((term) => text.includes(term));
+    });
+  }
+
+  if (intent.minYear !== undefined || intent.maxYear !== undefined || intent.wantsOld) {
+    const minYear = intent.minYear;
+    const maxYear = intent.maxYear ?? (intent.wantsOld ? OLD_CONTENT_YEAR_CUTOFF : undefined);
+
+    filtered = filtered.filter((item) => {
+      const year = Number.parseInt(getMediaYear(item), 10);
+      if (!Number.isFinite(year)) {
+        return false;
+      }
+
+      if (minYear !== undefined && year < minYear) {
+        return false;
+      }
+
+      if (maxYear !== undefined && year > maxYear) {
+        return false;
+      }
+
+      return true;
+    });
+  }
+
+  return filtered;
+};
+
+const extractSearchTokens = (queryRaw: string): string[] => {
+  const query = normalizeText(queryRaw);
+
+  return query
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length >= 2 && !SEARCH_FILLER_TERMS.has(token));
+};
+
+const computeItemSearchScore = (queryRaw: string, item: MediaItem): number => {
+  const title = getTitle(item);
+  const normalizedTitle = normalizeText(title);
+  const normalizedOverview = normalizeText(item.overview || '');
+  const tokens = extractSearchTokens(queryRaw);
+
+  let bestScore = computeSearchScore(queryRaw, title);
+  for (const token of tokens) {
+    bestScore = Math.max(bestScore, computeSearchScore(token, title));
+  }
+
+  const tokenHits = tokens.reduce((acc, token) => {
+    let bonus = 0;
+    if (normalizedTitle.includes(token)) {
+      bonus += 8;
+    }
+    if (normalizedOverview.includes(token)) {
+      bonus += 4;
+    }
+    return acc + bonus;
+  }, 0);
+
+  if (bestScore < 0 && tokenHits === 0) {
+    return -1;
+  }
+
+  return Math.max(bestScore, 30) + tokenHits;
+};
+
 function App() {
   const [catalog, setCatalog] = useState<Record<CatalogType | 'terror' | 'familia', MediaItem[]>>({
     filmes: [],
@@ -868,6 +1064,14 @@ function App() {
       return;
     }
 
+    const searchIntent = detectSearchIntent(normalizedQuery);
+    const titleTokens = extractSearchTokens(normalizedQuery);
+
+    // Quando a busca é SOMENTE palavras de intenção (ex: "desenhos antigos", "animes",
+    // "filmes 2000"), não existe título para comparar — tratamos como navegação por
+    // categoria e mostramos os itens do catálogo que satisfazem os filtros de intenção.
+    const isPureCategoryQuery = titleTokens.length === 0;
+
     const allItems = [
       ...catalog.filmes,
       ...catalog.terror,
@@ -877,21 +1081,42 @@ function App() {
     ];
 
     const uniqueItems = allItems.filter((item, index, arr) => index === arr.findIndex((ref) => ref.id === item.id));
+    const filteredLocalItems = applySearchIntentFilters(uniqueItems, searchIntent);
 
-    const ranked = uniqueItems
-      .map((item) => ({
-        item,
-        score: computeSearchScore(normalizedQuery, getTitle(item)),
-      }))
-      .filter((entry) => entry.score >= 0)
-      .sort((a, b) => b.score - a.score)
-      .map((entry) => entry.item);
+    let localResults: MediaItem[];
 
-    const localResults = ranked.slice(0, 20);
+    if (isPureCategoryQuery) {
+      // Sem título para buscar: retorna todos os itens que bateram nos filtros de
+      // intenção, ordenados por mais recente quando não há filtro de ano, ou por
+      // mais antigo quando o usuário quer conteúdo antigo.
+      const sorted = [...filteredLocalItems].sort((a, b) => {
+        const yA = Number.parseInt(getMediaYear(a), 10) || 0;
+        const yB = Number.parseInt(getMediaYear(b), 10) || 0;
+        return searchIntent.wantsOld ? yA - yB : yB - yA;
+      });
+      localResults = sorted.slice(0, 20);
+    } else {
+      const ranked = filteredLocalItems
+        .map((item) => ({
+          item,
+          score: computeItemSearchScore(normalizedQuery, item),
+        }))
+        .filter((entry) => entry.score >= 0)
+        .sort((a, b) => b.score - a.score)
+        .map((entry) => entry.item);
+
+      localResults = ranked.slice(0, 20);
+    }
+
     setSearchResults(localResults);
 
     const requestId = searchRequestIdRef.current + 1;
     searchRequestIdRef.current = requestId;
+
+    // Para buscas puramente por categoria, não faz sentido buscar no TMDB por título.
+    if (isPureCategoryQuery) {
+      return;
+    }
 
     try {
       const remoteResults = await searchTmdbContent(query, 5);
@@ -911,11 +1136,12 @@ function App() {
       );
 
       const safeMerged = merged.filter((item) => !isAdultContentItem(item));
+      const filteredMerged = applySearchIntentFilters(safeMerged, searchIntent);
 
-      const reranked = safeMerged
+      const reranked = filteredMerged
         .map((item) => ({
           item,
-          score: computeSearchScore(normalizedQuery, getTitle(item)),
+          score: computeItemSearchScore(normalizedQuery, item),
         }))
         .filter((entry) => entry.score >= 0)
         .sort((a, b) => b.score - a.score)
