@@ -15,11 +15,11 @@ type LiveChannel = {
 };
 
 const LIVE_CHANNELS: LiveChannel[] = [
-  { name: 'Sportv', url: 'https://3embeddecanais.xyz/sportv/' },
-  { name: 'Premiere 2', url: 'https://3embeddecanais.xyz/premiereclubes/' },
-  { name: 'TNT', url: 'https://3embeddecanais.xyz/tnt/' },
-  { name: 'BandSports', url: 'https://3embeddecanais.xyz/bandsports/' },
-  { name: 'Cartoon Network', url: 'https://3embeddecanais.xyz/cartoonnetwork/' },
+  { name: 'Sportv', url: 'https://w2.embedtv.lat/sportv' },
+  { name: 'Premiere', url: 'https://w2.embedtv.lat/premiere' },
+  { name: 'Gloob', url: 'https://w2.embedtv.lat/gloob' },
+  { name: 'SBT RJ', url: 'https://w2.embedtv.lat/sbtrj' },
+  { name: 'Globo RJ', url: 'https://w2.embedtv.lat/globorj' },
 ];
 
 export function LiveFootballPage({
@@ -85,7 +85,6 @@ export function LiveFootballPage({
             src={currentChannel.url}
             allow="autoplay; fullscreen; encrypted-media"
             allowFullScreen
-            sandbox="allow-same-origin allow-scripts allow-presentation"
             loading="lazy"
             title={`Canal ${currentChannel.name}`}
             referrerPolicy="strict-origin-when-cross-origin"
