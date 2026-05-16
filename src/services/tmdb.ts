@@ -10,6 +10,8 @@ type TMDBSearchMovie = {
   poster_path?: string | null;
   backdrop_path?: string | null;
   release_date?: string;
+  adult?: boolean;
+  genre_ids?: number[];
   vote_average?: number;
   vote_count?: number;
   popularity?: number;
@@ -22,6 +24,7 @@ type TMDBSearchTV = {
   poster_path?: string | null;
   backdrop_path?: string | null;
   first_air_date?: string;
+  genre_ids?: number[];
   vote_average?: number;
   vote_count?: number;
   popularity?: number;
@@ -65,6 +68,8 @@ const mapMovie = (item: TMDBSearchMovie): MediaItem => ({
   backdrop_path: item.backdrop_path || undefined,
   release_date: item.release_date || '',
   first_air_date: item.release_date || '',
+  adult: Boolean(item.adult),
+  genre_ids: Array.isArray(item.genre_ids) ? item.genre_ids : undefined,
   media_type: 'movie',
   content_type: 'movie',
 });
@@ -78,6 +83,8 @@ const mapTV = (item: TMDBSearchTV): MediaItem => ({
   backdrop_path: item.backdrop_path || undefined,
   release_date: item.first_air_date || '',
   first_air_date: item.first_air_date || '',
+  adult: false,
+  genre_ids: Array.isArray(item.genre_ids) ? item.genre_ids : undefined,
   media_type: 'tv',
   content_type: 'tv',
 });

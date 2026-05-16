@@ -63,6 +63,11 @@ export function CategoryPageView({
 
   const handleItemClick = (item: MediaItem) => {
     if (!onPlayItem) return;
+    if (item.content_type) {
+      onPlayItem(item, item.content_type);
+      return;
+    }
+
     // Detectar tipo pela página atual
     let mediaType: 'movie' | 'tv' | 'anime' = 'movie';
     if (title.toLowerCase().includes('série') || title.toLowerCase().includes('serie')) mediaType = 'tv';

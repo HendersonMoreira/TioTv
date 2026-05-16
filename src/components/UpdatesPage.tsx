@@ -65,16 +65,6 @@ export function UpdatesPage() {
             </ul>
           </article>
 
-          <article className="updates-plan-card updates-plan-card-plus">
-            <p className="updates-plan-tag">Premium Plus</p>
-            <h3>R$ 15,90</h3>
-            <p className="updates-plan-sub">acesso mensal</p>
-            <ul>
-              <li>Futebol Aberto</li>
-              <li>Canais Premiere</li>
-              <li>Canais especiais ao vivo</li>
-            </ul>
-          </article>
         </section>
       </section>
     </main>

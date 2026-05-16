@@ -79,16 +79,18 @@ export function LiveFootballPage({
           </div>
         </div>
 
-        <div className="video-container live-channel-video">
-          <iframe
-            key={currentChannel.url}
-            src={currentChannel.url}
-            allow="autoplay; fullscreen; encrypted-media"
-            allowFullScreen
-            loading="lazy"
-            title={`Canal ${currentChannel.name}`}
-            referrerPolicy="strict-origin-when-cross-origin"
-          />
+        <div className="live-channel-open-card">
+          <p className="live-channel-open-info">
+            Clique no botao abaixo para assistir o canal <strong>{currentChannel.name}</strong> em uma nova aba.
+          </p>
+          <a
+            href={currentChannel.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="live-channel-open-btn"
+          >
+            Assistir {currentChannel.name} ▶
+          </a>
         </div>
       </div>
     </div>

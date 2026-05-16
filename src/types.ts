@@ -9,6 +9,8 @@ export interface MediaItem {
   backdrop_path?: string;
   release_date?: string;
   first_air_date?: string;
+  adult?: boolean;
+  genre_ids?: number[];
   media_type?: 'movie' | 'tv';
   content_type?: 'movie' | 'tv' | 'anime';
 }

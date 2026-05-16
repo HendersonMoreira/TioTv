@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   fetchTVShowDetails,
   getBackdropUrlBySize,
@@ -19,7 +19,6 @@ import { RegisterModal } from './components/RegisterModal';
 import { SearchModal } from './components/SearchModal';
 import { AccountSettingsPage } from './components/AccountSettingsPage';
 import { UpdatesPage } from './components/UpdatesPage.tsx';
-import { LiveFootballPage } from './components/LiveFootballPage';
 import { GearIcon, SearchIcon } from './components/icons';
 import { logout, startAuthSessionTracking, subscribeToAuth, type AuthUser } from './services/auth';
 import { doc, onSnapshot, updateDoc, Timestamp } from 'firebase/firestore';
@@ -32,7 +31,7 @@ type RowDefinition = {
   openCategory?: boolean;
 };
 
-type CategoryPageId = 'terror' | 'familia' | 'desenhos' | 'series' | 'animes';
+type CategoryPageId = 'terror' | 'familia' | 'desenhos' | 'series' | 'animes' | 'adulto';
 
 type CategoryConfig = {
   title: string;
@@ -41,6 +40,8 @@ type CategoryConfig = {
 };
 
 const MAX_CATEGORY_PAGES = 1000;
+const ADULT_PIN = '1425';
+const ADULT_SESSION_KEY = 'tiotv_adult_unlocked';
 const FREE_TIER_YEAR = '2025';
 const WATCH_HISTORY_STORAGE_KEY = 'tiotv_watch_history_v1';
 const RECOMMENDATION_STOP_WORDS = new Set([
@@ -92,10 +93,11 @@ const CATEGORY_MAP: Record<CategoryPageId, CategoryConfig> = {
   desenhos: { title: 'Desenhos e Animes', type: 'animes' },
   series: { title: 'Series para Maratonar', type: 'series' },
   animes: { title: 'Animes', type: 'animes' },
+  adulto: { title: 'Area Adulto (+18)', type: 'filmes' },
 };
 
 const parseCategoryFromHash = (): CategoryPageId | null => {
-  const match = window.location.hash.match(/^#\/categoria\/(terror|familia|desenhos|series|animes)$/);
+  const match = window.location.hash.match(/^#\/categoria\/(terror|familia|desenhos|series|animes|adulto)$/);
   if (!match) return null;
   return match[1] as CategoryPageId;
 };
@@ -111,8 +113,6 @@ const parseGenreFromHash = (): number | null => {
 const isKidsHash = (): boolean => window.location.hash === '#/kids';
 const isSettingsHash = (): boolean => window.location.hash === '#/configuracoes';
 const isUpdatesHash = (): boolean => window.location.hash === '#/atualizacoes';
-const isFootballChannelHash = (): boolean => window.location.hash === '#/futebol-aberto';
-
 const normalizeText = (value: string): string =>
   value
     .normalize('NFD')
@@ -165,6 +165,79 @@ const KIDS_ALLOWED_HINTS = [
   'comedia',
   'magia',
 ];
+
+const ADULT_CONTENT_TERMS = [
+  '+18',
+  '18 anos',
+  'adulto',
+  'adult',
+  'porn',
+  'porno',
+  'pornografia',
+  'sex',
+  'sexo',
+  'nude',
+  'nudity',
+  'hentai',
+  'ecchi',
+  'doujin',
+  'yaoi',
+  'yuri',
+  'erot',
+  'erotico',
+  'sexual',
+  'nsfw',
+];
+
+const ADULT_FORCED_TITLE_TERMS = [
+  'overflow',
+  'high school dxd',
+  'highschool dxd',
+  'boku no pico',
+  'redo of healer',
+  'kaiyari',
+  'harem in the labyrinth',
+  'futoku no guild',
+  'shoujo ramune',
+];
+
+const ADULT_TITLE_EXCEPTIONS = [
+  'euphoria',
+  'lei & ordem: unidade de vitimas especiais',
+  'law & order: special victims unit',
+  'shameless',
+  'the tonight show com jimmy fallon',
+  'the tonight show starring jimmy fallon',
+];
+
+const isAdultContentItem = (item: MediaItem): boolean => {
+  if (item.adult) {
+    return true;
+  }
+
+  const title = normalizeText(`${item.title || ''} ${item.name || ''}`);
+  if (ADULT_TITLE_EXCEPTIONS.some((term) => title.includes(term))) {
+    return false;
+  }
+
+  if (ADULT_FORCED_TITLE_TERMS.some((term) => title.includes(term))) {
+    return true;
+  }
+
+  const text = normalizeText(`${item.title || ''} ${item.name || ''} ${item.overview || ''}`);
+  return ADULT_CONTENT_TERMS.some((term) => text.includes(term));
+};
+
+const sanitizeCatalogItems = (items: MediaItem[]): MediaItem[] => items.filter((item) => !isAdultContentItem(item));
+
+const tagCatalogItems = (items: MediaItem[], type: 'movie' | 'tv' | 'anime'): MediaItem[] =>
+  items.map((item) => ({ ...item, content_type: type }));
+
+const dedupeByTypeAndId = (items: MediaItem[]): MediaItem[] =>
+  items.filter((item, index, arr) => {
+    const mediaType = item.content_type || item.media_type || 'movie';
+    return index === arr.findIndex((ref) => ref.id === item.id && (ref.content_type || ref.media_type || 'movie') === mediaType);
+  });
 
 const isKidsSafeItem = (item: MediaItem): boolean => {
   const text = normalizeText(`${item.title || ''} ${item.name || ''} ${item.overview || ''}`);
@@ -268,16 +341,20 @@ function App() {
   const [loginOpen, setLoginOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState<boolean>(() => isSettingsHash());
   const [updatesOpen, setUpdatesOpen] = useState<boolean>(() => isUpdatesHash());
-  const [footballChannelOpen, setFootballChannelOpen] = useState<boolean>(() => isFootballChannelHash());
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [isPremiumUser, setIsPremiumUser] = useState(false);
   const [isPremiumPlusUser, setIsPremiumPlusUser] = useState(false);
   const [premiumExpiresAt, setPremiumExpiresAt] = useState<Date | null>(null);
   const [premiumUpsellOpen, setPremiumUpsellOpen] = useState(false);
   const [premiumUpsellMessage, setPremiumUpsellMessage] = useState('Seja Premium e desbloqueie todo o catalogo. Nao perca essa chance. Assine nosso plano premium.');
+  const [adultPinModalOpen, setAdultPinModalOpen] = useState(false);
+  const [adultPinInput, setAdultPinInput] = useState('');
+  const [adultPinError, setAdultPinError] = useState<string | null>(null);
+  const [adultUnlocked, setAdultUnlocked] = useState<boolean>(() => window.sessionStorage.getItem(ADULT_SESSION_KEY) === '1');
   const [categoryItems, setCategoryItems] = useState<MediaItem[]>([]);
   const [categoryLoading, setCategoryLoading] = useState(false);
   const [categoryError, setCategoryError] = useState<string | null>(null);
+  const [adultCatalogPool, setAdultCatalogPool] = useState<MediaItem[]>([]);
   const [categoryPage, setCategoryPage] = useState(1);
   const [categoryTotalPages, setCategoryTotalPages] = useState(1);
   const [playerContent, setPlayerContent] = useState<{
@@ -460,12 +537,20 @@ function App() {
 
   useEffect(() => {
     const onHashChange = () => {
+      const nextCategory = parseCategoryFromHash();
+      if (nextCategory === 'adulto' && !adultUnlocked) {
+        setAdultPinModalOpen(true);
+        setAdultPinError('Area protegida. Fale comigo para receber o PIN de 4 digitos.');
+        setAdultPinInput('');
+        window.location.hash = '';
+        return;
+      }
+
       setCurrentCategory(parseCategoryFromHash());
       setCurrentGenreId(parseGenreFromHash());
       setKidsPageOpen(isKidsHash());
       setSettingsOpen(isSettingsHash());
       setUpdatesOpen(isUpdatesHash());
-      setFootballChannelOpen(isFootballChannelHash());
       setGenresOpen(false);
     };
 
@@ -473,7 +558,7 @@ function App() {
     return () => {
       window.removeEventListener('hashchange', onHashChange);
     };
-  }, []);
+  }, [adultUnlocked]);
 
   useEffect(() => {
     let isMounted = true;
@@ -509,7 +594,30 @@ function App() {
         ]);
 
         if (!isMounted) return;
-        setCatalog({ filmes, terror, familia, animes, series });
+        const taggedFilmes = tagCatalogItems(filmes, 'movie');
+        const taggedTerror = tagCatalogItems(terror, 'movie');
+        const taggedFamilia = tagCatalogItems(familia, 'movie');
+        const taggedAnimes = tagCatalogItems(animes, 'anime');
+        const taggedSeries = tagCatalogItems(series, 'tv');
+
+        const adultPool = dedupeByTypeAndId(
+          [
+            ...taggedFilmes,
+            ...taggedTerror,
+            ...taggedFamilia,
+            ...taggedAnimes,
+            ...taggedSeries,
+          ].filter(isAdultContentItem),
+        );
+
+        setAdultCatalogPool(adultPool);
+        setCatalog({
+          filmes: sanitizeCatalogItems(taggedFilmes),
+          terror: sanitizeCatalogItems(taggedTerror),
+          familia: sanitizeCatalogItems(taggedFamilia),
+          animes: sanitizeCatalogItems(taggedAnimes),
+          series: sanitizeCatalogItems(taggedSeries),
+        });
         setError(null);
       } catch (err) {
         if (!isMounted) return;
@@ -675,6 +783,22 @@ function App() {
       try {
         setCategoryLoading(true);
 
+        if (currentCategory === 'adulto') {
+          const pageSize = 20;
+          const totalAdultPages = Math.max(1, Math.ceil(adultCatalogPool.length / pageSize));
+          const normalizedPage = Math.min(Math.max(categoryPage, 1), totalAdultPages);
+          if (normalizedPage !== categoryPage) {
+            setCategoryPage(normalizedPage);
+          }
+          const start = (normalizedPage - 1) * pageSize;
+          const end = start + pageSize;
+
+          setCategoryItems(adultCatalogPool.slice(start, end));
+          setCategoryTotalPages(totalAdultPages);
+          setCategoryError(null);
+          return;
+        }
+
         const data = await loadCatalogPage(
           config?.type ?? 'filmes',
           categoryPage,
@@ -686,7 +810,24 @@ function App() {
           return;
         }
 
-        setCategoryItems(data.items);
+        const categoryContentType: 'movie' | 'tv' | 'anime' =
+          config?.type === 'series' ? 'tv' : config?.type === 'animes' ? 'anime' : 'movie';
+        const taggedCategoryItems = data.items.map((item) => ({
+          ...item,
+          content_type: categoryContentType,
+        }));
+        const adultFromCategory = taggedCategoryItems.filter(isAdultContentItem);
+        if (adultFromCategory.length > 0) {
+          setAdultCatalogPool((prev) => {
+            const merged = dedupeByTypeAndId([...prev, ...adultFromCategory]);
+            if (merged.length === prev.length) {
+              return prev;
+            }
+            return merged;
+          });
+        }
+
+        setCategoryItems(sanitizeCatalogItems(taggedCategoryItems));
         const safeTotalPages = Math.min(Math.max(data.totalPages, 1), MAX_CATEGORY_PAGES);
         setCategoryTotalPages(safeTotalPages);
         setCategoryError(null);
@@ -705,7 +846,7 @@ function App() {
     return () => {
       isMounted = false;
     };
-  }, [currentCategory, currentGenreId, categoryPage]);
+  }, [currentCategory, currentGenreId, categoryPage, adultCatalogPool]);
 
   const goToCategoryPage = (page: number) => {
     if (categoryLoading) return;
@@ -769,7 +910,9 @@ function App() {
           )
       );
 
-      const reranked = merged
+      const safeMerged = merged.filter((item) => !isAdultContentItem(item));
+
+      const reranked = safeMerged
         .map((item) => ({
           item,
           score: computeSearchScore(normalizedQuery, getTitle(item)),
@@ -812,6 +955,39 @@ function App() {
 
   const openGenrePage = (genreId: number) => {
     window.location.hash = `#/genero/${genreId}`;
+  };
+
+  const openAdultPage = () => {
+    setGenresOpen(false);
+
+    if (adultUnlocked) {
+      window.location.hash = '#/categoria/adulto';
+      return;
+    }
+
+    setAdultPinModalOpen(true);
+    setAdultPinInput('');
+    setAdultPinError(null);
+  };
+
+  const closeAdultPinModal = () => {
+    setAdultPinModalOpen(false);
+    setAdultPinInput('');
+    setAdultPinError(null);
+  };
+
+  const submitAdultPin = () => {
+    if (adultPinInput !== ADULT_PIN) {
+      setAdultPinError('PIN incorreto. Entre em contato comigo para receber o acesso.');
+      return;
+    }
+
+    window.sessionStorage.setItem(ADULT_SESSION_KEY, '1');
+    setAdultUnlocked(true);
+    setAdultPinModalOpen(false);
+    setAdultPinInput('');
+    setAdultPinError(null);
+    window.location.hash = '#/categoria/adulto';
   };
 
   const closeCategoryPage = () => {
@@ -862,27 +1038,6 @@ function App() {
   const openUpdatesPage = () => {
     window.location.hash = '#/atualizacoes';
   };
-
-  const openFootballChannelPage = () => {
-    if (!isPremiumPlusUser) {
-      setPremiumUpsellMessage('Por favor, fala com o dono do site para se tornar PremiumPlus e liberar o Futebol Aberto.');
-      setPremiumUpsellOpen(true);
-      setGenresOpen(false);
-      return;
-    }
-
-    window.location.hash = '#/futebol-aberto';
-  };
-
-  useEffect(() => {
-    if (!footballChannelOpen || isPremiumPlusUser) {
-      return;
-    }
-
-    setPremiumUpsellMessage('Por favor, fala com o dono do site para se tornar PremiumPlus e liberar o Futebol Aberto.');
-    setPremiumUpsellOpen(true);
-    window.location.hash = '';
-  }, [footballChannelOpen, isPremiumPlusUser]);
 
   const openLoginModal = () => {
     setRegisterOpen(false);
@@ -997,7 +1152,7 @@ function App() {
     setPlayerContent(null);
   };
 
-  const handlePlayerProgressChange = (progress: {
+  const handlePlayerProgressChange = useCallback((progress: {
     type: 'movie' | 'tv' | 'anime';
     contentId: number;
     season?: number;
@@ -1037,7 +1192,7 @@ function App() {
       const filtered = prev.filter((entry) => entry.key !== key);
       return [nextEntry, ...filtered].slice(0, 50);
     });
-  };
+  }, [authUser?.uid]);
 
   const handleLogout = async () => {
     try {
@@ -1268,9 +1423,41 @@ function App() {
           genres={movieGenres}
           onClose={() => setGenresOpen(false)}
           onSelectGenre={openGenrePage}
-          hasPremiumPlus={isPremiumPlusUser}
-          onOpenFootballChannel={openFootballChannelPage}
+          onOpenAdultArea={openAdultPage}
         />
+
+        {adultPinModalOpen && (
+          <div className="adult-pin-overlay" onClick={closeAdultPinModal}>
+            <div className="adult-pin-modal" onClick={(event) => event.stopPropagation()}>
+              <h3>Area Adulto (+18)</h3>
+              <p>
+                Conteudo restrito para privacidade e protecao das criancas. Para entrar, informe o PIN de 4 digitos.
+              </p>
+              <input
+                type="password"
+                inputMode="numeric"
+                maxLength={4}
+                value={adultPinInput}
+                onChange={(event) => {
+                  const next = event.target.value.replace(/\D/g, '').slice(0, 4);
+                  setAdultPinInput(next);
+                }}
+                className="adult-pin-input"
+                placeholder="Digite o PIN"
+                aria-label="PIN de 4 digitos"
+              />
+              {adultPinError && <p className="adult-pin-error">{adultPinError}</p>}
+              <div className="adult-pin-actions">
+                <button type="button" className="ghost-account-btn" onClick={closeAdultPinModal}>
+                  Cancelar
+                </button>
+                <button type="button" className="account-btn" onClick={submitAdultPin}>
+                  Entrar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <UpdatesPage />
 
@@ -1288,17 +1475,6 @@ function App() {
           onSuccess={onAuthSuccess}
         />
       </div>
-    );
-  }
-
-  if (footballChannelOpen) {
-    return (
-      <LiveFootballPage
-        onBack={() => { window.location.hash = ''; }}
-        currentUserName={userFirstName}
-        onOpenSettings={openSettingsPage}
-        onLogout={handleLogout}
-      />
     );
   }
 
@@ -1398,9 +1574,41 @@ function App() {
           genres={movieGenres}
           onClose={() => setGenresOpen(false)}
           onSelectGenre={openGenrePage}
-          hasPremiumPlus={isPremiumPlusUser}
-          onOpenFootballChannel={openFootballChannelPage}
+          onOpenAdultArea={openAdultPage}
         />
+
+        {adultPinModalOpen && (
+          <div className="adult-pin-overlay" onClick={closeAdultPinModal}>
+            <div className="adult-pin-modal" onClick={(event) => event.stopPropagation()}>
+              <h3>Area Adulto (+18)</h3>
+              <p>
+                Conteudo restrito para privacidade e protecao das criancas. Para entrar, informe o PIN de 4 digitos.
+              </p>
+              <input
+                type="password"
+                inputMode="numeric"
+                maxLength={4}
+                value={adultPinInput}
+                onChange={(event) => {
+                  const next = event.target.value.replace(/\D/g, '').slice(0, 4);
+                  setAdultPinInput(next);
+                }}
+                className="adult-pin-input"
+                placeholder="Digite o PIN"
+                aria-label="PIN de 4 digitos"
+              />
+              {adultPinError && <p className="adult-pin-error">{adultPinError}</p>}
+              <div className="adult-pin-actions">
+                <button type="button" className="ghost-account-btn" onClick={closeAdultPinModal}>
+                  Cancelar
+                </button>
+                <button type="button" className="account-btn" onClick={submitAdultPin}>
+                  Entrar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <RegisterModal
           open={registerOpen}

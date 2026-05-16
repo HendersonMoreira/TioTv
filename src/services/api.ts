@@ -64,15 +64,18 @@ type CatalogPageResult = {
   totalPages: number;
 };
 
-function buildCatalogUrl(type: CatalogType, page: number, genre?: string, genreId?: number): string {
+const ADULT_SEARCH_TERMS = ['hentai', 'porn', 'erotic', 'ecchi'];
+
+function buildCatalogUrl(type: CatalogType, page: number, genre?: string, genreId?: number, includeAdult = false): string {
   const key = encodeURIComponent(TMDB_API_KEY);
+  const includeAdultFlag = includeAdult ? 'true' : 'false';
 
   if (type === 'filmes') {
     const gid = genreId ?? (genre ? GENRE_MAP[genre] : undefined);
     if (gid) {
-      return `${TMDB_BASE}/discover/movie?api_key=${key}&language=pt-BR&with_genres=${gid}&page=${page}`;
+      return `${TMDB_BASE}/discover/movie?api_key=${key}&language=pt-BR&with_genres=${gid}&include_adult=${includeAdultFlag}&page=${page}`;
     }
-    return `${TMDB_BASE}/movie/popular?api_key=${key}&language=pt-BR&page=${page}`;
+    return `${TMDB_BASE}/discover/movie?api_key=${key}&language=pt-BR&sort_by=popularity.desc&include_adult=${includeAdultFlag}&page=${page}`;
   }
 
   if (type === 'animes') {
@@ -88,8 +91,9 @@ export async function loadCatalogPage(
   page = 1,
   genre?: string,
   genreId?: number,
+  includeAdult = false,
 ): Promise<CatalogPageResult> {
-  const url = buildCatalogUrl(type, page, genre, genreId);
+  const url = buildCatalogUrl(type, page, genre, genreId, includeAdult);
 
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), 12000);
@@ -116,6 +120,55 @@ export async function loadCatalog(
 ): Promise<MediaItem[]> {
   const data = await loadCatalogPage(type, page, genre);
   return data.items;
+}
+
+async function searchAdultMoviesByLanguage(page: number, language: string): Promise<CatalogPageResult> {
+  const key = encodeURIComponent(TMDB_API_KEY);
+
+  const requests = ADULT_SEARCH_TERMS.map((term) => {
+    const url =
+      `${TMDB_BASE}/search/movie?api_key=${key}` +
+      `&language=${encodeURIComponent(language)}` +
+      `&query=${encodeURIComponent(term)}` +
+      `&include_adult=true&page=${page}`;
+    return fetch(url, { cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) {
+          return { results: [] as MediaItem[], total_pages: 1 };
+        }
+        const data = (await response.json()) as TMDBListResponse;
+        return {
+          results: Array.isArray(data.results) ? data.results : [],
+          total_pages: Number(data.total_pages ?? 1),
+        };
+      })
+      .catch(() => ({ results: [] as MediaItem[], total_pages: 1 }));
+  });
+
+  const responses = await Promise.all(requests);
+  const merged = responses.flatMap((entry) => entry.results);
+  const unique = merged.filter((item, index, arr) => index === arr.findIndex((ref) => ref.id === item.id));
+  const totalPagesRaw = Math.min(
+    Math.max(...responses.map((entry) => (Number.isFinite(entry.total_pages) ? entry.total_pages : 1)), 1),
+    MAX_PAGES,
+  );
+  const totalPages = Number.isFinite(totalPagesRaw) && totalPagesRaw > 0 ? Math.floor(totalPagesRaw) : 1;
+  const hasMore = page < totalPages && unique.length > 0;
+
+  return {
+    items: unique.slice(0, 30),
+    hasMore,
+    totalPages,
+  };
+}
+
+export async function loadAdultCatalogPage(page = 1): Promise<CatalogPageResult> {
+  const pt = await searchAdultMoviesByLanguage(page, 'pt-BR');
+  if (pt.items.length > 0) {
+    return pt;
+  }
+
+  return searchAdultMoviesByLanguage(page, 'en-US');
 }
 
 export async function loadMovieGenres(): Promise<MovieGenre[]> {
