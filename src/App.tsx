@@ -174,7 +174,6 @@ const ADULT_CONTENT_TERMS = [
   'porn',
   'porno',
   'pornografia',
-  'sex',
   'sexo',
   'nude',
   'nudity',
@@ -188,6 +187,45 @@ const ADULT_CONTENT_TERMS = [
   'sexual',
   'nsfw',
 ];
+
+const ADULT_CONTENT_TOKEN_TERMS = [
+  'adulto',
+  'adult',
+  'porn',
+  'porno',
+  'pornografia',
+  'sexo',
+  'nude',
+  'nudity',
+  'hentai',
+  'ecchi',
+  'doujin',
+  'yaoi',
+  'yuri',
+  'erotico',
+  'sexual',
+  'nsfw',
+];
+
+const ADULT_CONTENT_PHRASE_TERMS = [
+  '+18',
+  '18 anos',
+  'conteudo adulto',
+  'adult content',
+  'sem censura',
+];
+
+const STRICT_ADULT_HIGH_CONFIDENCE_TOKENS = new Set([
+  'porn',
+  'porno',
+  'pornografia',
+  'hentai',
+  'ecchi',
+  'doujin',
+  'yaoi',
+  'yuri',
+  'nsfw',
+]);
 
 const ADULT_FORCED_TITLE_TERMS = [
   'overflow',
@@ -225,7 +263,48 @@ const isAdultContentItem = (item: MediaItem): boolean => {
   }
 
   const text = normalizeText(`${item.title || ''} ${item.name || ''} ${item.overview || ''}`);
+  if (ADULT_CONTENT_PHRASE_TERMS.some((term) => text.includes(term))) {
+    return true;
+  }
+
+  const textTokens = text.split(/[^a-z0-9]+/).filter(Boolean);
+  if (ADULT_CONTENT_TOKEN_TERMS.some((term) => textTokens.includes(term))) {
+    return true;
+  }
+
   return ADULT_CONTENT_TERMS.some((term) => text.includes(term));
+};
+
+const isStrictAdultAreaItem = (item: MediaItem): boolean => {
+  if (item.adult) {
+    return true;
+  }
+
+  const title = normalizeText(`${item.title || ''} ${item.name || ''}`);
+  if (ADULT_TITLE_EXCEPTIONS.some((term) => title.includes(term))) {
+    return false;
+  }
+
+  if (ADULT_FORCED_TITLE_TERMS.some((term) => title.includes(term))) {
+    return true;
+  }
+
+  const text = normalizeText(`${item.title || ''} ${item.name || ''} ${item.overview || ''}`);
+  const hasPhraseSignal = ADULT_CONTENT_PHRASE_TERMS.some((term) => text.includes(term));
+  const textTokens = text.split(/[^a-z0-9]+/).filter(Boolean);
+
+  const matchedTokens = ADULT_CONTENT_TOKEN_TERMS.filter((term) => textTokens.includes(term));
+  const hasHighConfidenceToken = matchedTokens.some((token) => STRICT_ADULT_HIGH_CONFIDENCE_TOKENS.has(token));
+
+  if (hasHighConfidenceToken) {
+    return true;
+  }
+
+  if (hasPhraseSignal && matchedTokens.length >= 1) {
+    return true;
+  }
+
+  return matchedTokens.length >= 2;
 };
 
 const sanitizeCatalogItems = (items: MediaItem[]): MediaItem[] => items.filter((item) => !isAdultContentItem(item));
@@ -803,7 +882,7 @@ function App() {
             ...taggedFamilia,
             ...taggedAnimes,
             ...taggedSeries,
-          ].filter(isAdultContentItem),
+          ].filter(isStrictAdultAreaItem),
         );
 
         setAdultCatalogPool(adultPool);
@@ -1012,7 +1091,7 @@ function App() {
           ...item,
           content_type: categoryContentType,
         }));
-        const adultFromCategory = taggedCategoryItems.filter(isAdultContentItem);
+        const adultFromCategory = taggedCategoryItems.filter(isStrictAdultAreaItem);
         if (adultFromCategory.length > 0) {
           setAdultCatalogPool((prev) => {
             const merged = dedupeByTypeAndId([...prev, ...adultFromCategory]);
