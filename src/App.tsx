@@ -13,6 +13,7 @@ import { CategoryPageView } from './components/CategoryPageView';
 import { ContentRow } from './components/ContentRow';
 import { GenresOverlay } from './components/GenresOverlay';
 import { KidsPageView } from './components/KidsPageView';
+import { ForgotPasswordPage } from './components/ForgotPasswordPage';
 import { LoginModal } from './components/LoginModal';
 import { PlayerPage } from './components/PlayerPage';
 import { RegisterModal } from './components/RegisterModal';
@@ -113,6 +114,7 @@ const parseGenreFromHash = (): number | null => {
 const isKidsHash = (): boolean => window.location.hash === '#/kids';
 const isSettingsHash = (): boolean => window.location.hash === '#/configuracoes';
 const isUpdatesHash = (): boolean => window.location.hash === '#/atualizacoes';
+const isForgotPasswordHash = (): boolean => window.location.hash === '#/esqueci-senha';
 const normalizeText = (value: string): string =>
   value
     .normalize('NFD')
@@ -614,6 +616,7 @@ function App() {
   const [registerOpen, setRegisterOpen] = useState(false);
   const [registerContextMessage, setRegisterContextMessage] = useState<string | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);
+  const [forgotPasswordOpen, setForgotPasswordOpen] = useState<boolean>(() => isForgotPasswordHash());
   const [settingsOpen, setSettingsOpen] = useState<boolean>(() => isSettingsHash());
   const [updatesOpen, setUpdatesOpen] = useState<boolean>(() => isUpdatesHash());
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
@@ -824,6 +827,7 @@ function App() {
       setCurrentCategory(parseCategoryFromHash());
       setCurrentGenreId(parseGenreFromHash());
       setKidsPageOpen(isKidsHash());
+      setForgotPasswordOpen(isForgotPasswordHash());
       setSettingsOpen(isSettingsHash());
       setUpdatesOpen(isUpdatesHash());
       setGenresOpen(false);
@@ -1347,6 +1351,19 @@ function App() {
   const openLoginModal = () => {
     setRegisterOpen(false);
     setRegisterContextMessage(null);
+    window.location.hash = '';
+    setLoginOpen(true);
+  };
+
+  const openForgotPasswordPage = () => {
+    setRegisterOpen(false);
+    setLoginOpen(false);
+    window.location.hash = '#/esqueci-senha';
+  };
+
+  const backToLoginFromForgotPassword = () => {
+    window.location.hash = '';
+    setForgotPasswordOpen(false);
     setLoginOpen(true);
   };
 
@@ -1649,6 +1666,14 @@ function App() {
     );
   }
 
+  if (forgotPasswordOpen) {
+    return (
+      <ForgotPasswordPage
+        onBackToLogin={backToLoginFromForgotPassword}
+      />
+    );
+  }
+
   if (updatesOpen) {
     return (
       <div className="app-shell updates-page-shell">
@@ -1777,6 +1802,7 @@ function App() {
           open={loginOpen}
           onClose={() => setLoginOpen(false)}
           onRegister={() => openRegisterModal()}
+          onForgotPassword={openForgotPasswordPage}
           onSuccess={onAuthSuccess}
         />
       </div>
@@ -1926,6 +1952,7 @@ function App() {
           open={loginOpen}
           onClose={() => setLoginOpen(false)}
           onRegister={() => openRegisterModal()}
+          onForgotPassword={openForgotPasswordPage}
           onSuccess={onAuthSuccess}
         />
 

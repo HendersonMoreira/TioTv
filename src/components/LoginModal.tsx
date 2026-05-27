@@ -6,10 +6,11 @@ interface LoginModalProps {
   open: boolean;
   onClose: () => void;
   onRegister: () => void;
+  onForgotPassword: () => void;
   onSuccess?: () => void;
 }
 
-export function LoginModal({ open, onClose, onRegister, onSuccess }: LoginModalProps) {
+export function LoginModal({ open, onClose, onRegister, onForgotPassword, onSuccess }: LoginModalProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -104,6 +105,10 @@ export function LoginModal({ open, onClose, onRegister, onSuccess }: LoginModalP
             {submitting ? 'Entrando...' : 'Entrar'}
           </button>
           {error && <p className="register-error">{error}</p>}
+
+          <button type="button" className="register-link login-forgot-link" onClick={onForgotPassword}>
+            Esqueci minha senha
+          </button>
         </form>
 
         <p className="register-footer">

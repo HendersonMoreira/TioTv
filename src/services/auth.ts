@@ -1,9 +1,12 @@
 import {
   createUserWithEmailAndPassword,
   EmailAuthProvider,
+  confirmPasswordReset,
+  sendPasswordResetEmail,
   onAuthStateChanged,
   reauthenticateWithCredential,
   signInWithEmailAndPassword,
+  verifyPasswordResetCode,
   signOut,
   updateEmail,
   updatePassword,
@@ -134,12 +137,28 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
   'auth/email-already-in-use': 'Este email ja esta em uso.',
   'auth/invalid-email': 'Email invalido.',
   'auth/invalid-credential': 'Email ou senha invalidos.',
+  'auth/invalid-login-credentials': 'Email ou senha invalidos.',
   'auth/user-not-found': 'Usuario nao encontrado.',
   'auth/wrong-password': 'Senha incorreta.',
+  'auth/requires-recent-login': 'Para alterar o e-mail, saia e entre novamente na conta e tente de novo.',
+  'auth/credential-already-in-use': 'Este e-mail ja esta vinculado a outra conta.',
+  'auth/email-change-needs-verification': 'Seu provedor exige verificacao para trocar o e-mail.',
+  'auth/operation-not-allowed': 'Alteracao de e-mail nao permitida no Firebase. Verifique se o login por email e senha esta habilitado.',
+  'auth/api-key-not-valid': 'Configuracao do Firebase invalida. Verifique a chave publica do frontend.',
+  'auth/network-request-failed': 'Falha de rede ao falar com o Firebase. Verifique sua conexao.',
   'auth/weak-password': 'A senha precisa ter no minimo 6 caracteres.',
   'auth/too-many-requests': 'Muitas tentativas. Tente novamente em alguns minutos.',
   'auth/session-limit-exceeded': 'Muitas pessoas estao usando esta conta. Desconecte de outros dispositivos para continuar.',
   'permission-denied': 'Sem permissao para gravar no banco. Verifique as regras do Firestore.',
+};
+
+const isFirestorePermissionDenied = (error: unknown): boolean => {
+  if (typeof error !== 'object' || error === null || !('code' in error)) {
+    return false;
+  }
+
+  const code = String((error as { code: string }).code || '').toLowerCase();
+  return code === 'permission-denied' || code === 'firestore/permission-denied';
 };
 
 const getOrCreateDeviceSessionId = (): string => {
@@ -301,7 +320,17 @@ const upsertUserProfile = async (user: User, preferredName?: string): Promise<vo
 export const getAuthErrorMessage = (error: unknown): string => {
   if (typeof error === 'object' && error !== null && 'code' in error) {
     const code = String((error as { code: string }).code);
-    return AUTH_ERROR_MESSAGES[code] ?? 'Nao foi possivel autenticar agora.';
+    const mapped = AUTH_ERROR_MESSAGES[code];
+    if (mapped) {
+      return mapped;
+    }
+
+    const fallbackMessage =
+      typeof (error as { message?: string }).message === 'string'
+        ? (error as { message?: string }).message
+        : null;
+
+    return fallbackMessage ? `${fallbackMessage} (${code})` : `Nao foi possivel autenticar agora. (${code})`;
   }
 
   return 'Nao foi possivel autenticar agora.';
@@ -319,7 +348,14 @@ export const registerWithEmail = async (name: string, email: string, password: s
     await updateProfile(credential.user, { displayName: trimmedName });
   }
 
-  await reserveSessionSlot(credential.user);
+  try {
+    await reserveSessionSlot(credential.user);
+  } catch (err) {
+    if (!isFirestorePermissionDenied(err)) {
+      throw err;
+    }
+    console.warn('Firestore bloqueou reserveSessionSlot no cadastro; seguindo com login local.', err);
+  }
 
   // Nao bloqueia o login/cadastro caso o Firestore demore ou falhe.
   upsertUserProfile(credential.user, trimmedName).catch((err) => {
@@ -341,9 +377,12 @@ export const loginWithEmail = async (email: string, password: string): Promise<A
   try {
     await reserveSessionSlot(credential.user);
   } catch (err) {
-    clearSessionCookie();
-    await signOut(auth);
-    throw err;
+    if (!isFirestorePermissionDenied(err)) {
+      clearSessionCookie();
+      await signOut(auth);
+      throw err;
+    }
+    console.warn('Firestore bloqueou reserveSessionSlot no login; seguindo com sessao local.', err);
   }
 
   // Nao bloqueia o login caso o Firestore demore ou falhe.
@@ -385,9 +424,19 @@ export const updateUserName = async (newName: string): Promise<void> => {
 export const updateUserEmail = async (currentPassword: string, newEmail: string): Promise<void> => {
   const user = auth.currentUser;
   if (!user) throw new Error('Nao autenticado.');
-  await reauth(currentPassword);
-  await updateEmail(user, newEmail);
-  await setDoc(doc(db, 'Users', user.uid), { email: newEmail, updatedAt: serverTimestamp() }, { merge: true });
+  try {
+    await reauth(currentPassword);
+    await updateEmail(user, newEmail);
+    await setDoc(doc(db, 'Users', user.uid), { email: newEmail, updatedAt: serverTimestamp() }, { merge: true });
+  } catch (err) {
+    if (typeof err === 'object' && err !== null && 'code' in err) {
+      const code = String((err as { code: string }).code);
+      if (code === 'auth/requires-recent-login') {
+        throw Object.assign(new Error('Para alterar o e-mail, saia e entre novamente na conta e tente de novo.'), { code });
+      }
+    }
+    throw err;
+  }
 };
 
 export const updateUserPassword = async (currentPassword: string, newPassword: string): Promise<void> => {
@@ -395,6 +444,21 @@ export const updateUserPassword = async (currentPassword: string, newPassword: s
   if (!user) throw new Error('Nao autenticado.');
   await reauth(currentPassword);
   await updatePassword(user, newPassword);
+};
+
+export const requestPasswordReset = async (email: string, continueUrl: string): Promise<void> => {
+  await sendPasswordResetEmail(auth, email, {
+    url: continueUrl,
+    handleCodeInApp: true,
+  });
+};
+
+export const verifyPasswordResetLink = async (oobCode: string): Promise<string> => {
+  return verifyPasswordResetCode(auth, oobCode);
+};
+
+export const completePasswordReset = async (oobCode: string, newPassword: string): Promise<void> => {
+  await confirmPasswordReset(auth, oobCode, newPassword);
 };
 
 export const subscribeToAuth = (callback: (user: AuthUser | null) => void): (() => void) =>

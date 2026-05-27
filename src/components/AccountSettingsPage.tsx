@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import QRCode from 'qrcode';
 import { CheckIcon, GearIcon } from './icons';
+import { createPagBankCheckout, createPagBankPixCheckout, verifyPagBankPayment } from '../services/payments';
 import {
   getAuthErrorMessage,
   updateUserEmail,
@@ -16,6 +18,8 @@ type Section =
 
 type FieldState = { submitting: boolean; error: string | null; success: boolean };
 const IDLE: FieldState = { submitting: false, error: null, success: false };
+const AUTO_VERIFY_MAX_ATTEMPTS = 10;
+const AUTO_VERIFY_INTERVAL_MS = 6000;
 
 interface Props {
   user: AuthUser;
@@ -43,6 +47,161 @@ export function AccountSettingsPage({ user, isPremium, premiumExpiresAt, onBack,
   const [newPw, setNewPw] = useState('');
   const [confirmPw, setConfirmPw] = useState('');
   const [senhaState, setSenhaState] = useState<FieldState>(IDLE);
+  const [billingTaxId, setBillingTaxId] = useState('');
+  const [upgradeSubmitting, setUpgradeSubmitting] = useState(false);
+  const [upgradeError, setUpgradeError] = useState<string | null>(null);
+  const [upgradeSuccess, setUpgradeSuccess] = useState<string | null>(null);
+  const [pixCode, setPixCode] = useState('');
+  const [pixQrDataUrl, setPixQrDataUrl] = useState<string | null>(null);
+  const [pendingOrderId, setPendingOrderId] = useState('');
+  const [pendingCheckoutId, setPendingCheckoutId] = useState('');
+  const [pendingReferenceId, setPendingReferenceId] = useState('');
+  const [manualOrderInput, setManualOrderInput] = useState('');
+  const [verifySubmitting, setVerifySubmitting] = useState(false);
+  const [autoVerifyActive, setAutoVerifyActive] = useState(false);
+  const [autoVerifyAttempt, setAutoVerifyAttempt] = useState(0);
+
+  useEffect(() => {
+    let mounted = true;
+
+    if (!pixCode) {
+      setPixQrDataUrl(null);
+      return () => {
+        mounted = false;
+      };
+    }
+
+    QRCode.toDataURL(pixCode, {
+      width: 220,
+      margin: 1,
+      errorCorrectionLevel: 'M',
+    })
+      .then((dataUrl: string) => {
+        if (mounted) {
+          setPixQrDataUrl(dataUrl);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setPixQrDataUrl(null);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [pixCode]);
+
+  const copyPixCode = async () => {
+    if (!pixCode) return;
+
+    try {
+      await navigator.clipboard.writeText(pixCode);
+      setUpgradeSuccess('Codigo PIX copiado. Pague no app do seu banco para ativar o Premium automaticamente.');
+      setUpgradeError(null);
+    } catch {
+      setUpgradeError('Nao foi possivel copiar automaticamente. Copie manualmente o codigo PIX abaixo.');
+    }
+  };
+
+  const verifyPayment = async (isAuto = false) => {
+    const normalizedManualOrderId = (manualOrderInput.match(/ORDE_[A-Za-z0-9-]+/) || [])[0] || '';
+    const effectiveOrderId = normalizedManualOrderId || pendingOrderId;
+
+    if (!user.uid || (!effectiveOrderId && !pendingCheckoutId)) {
+      if (!isAuto) {
+        setUpgradeError('Nao foi possivel verificar: pagamento pendente nao encontrado.');
+      }
+      return false;
+    }
+
+    if (!isAuto) {
+      setVerifySubmitting(true);
+      setUpgradeError(null);
+    }
+
+    try {
+      const result = await verifyPagBankPayment({
+        uid: user.uid,
+        orderId: effectiveOrderId || undefined,
+        checkoutId: pendingCheckoutId || undefined,
+        referenceId: pendingReferenceId || undefined,
+      });
+
+      if (result.paid) {
+        setUpgradeSuccess('Pagamento confirmado pelo Mercado Pago. Premium ativado com sucesso.');
+        setPendingOrderId('');
+        setPendingCheckoutId('');
+        setPendingReferenceId('');
+        setManualOrderInput('');
+        setPixCode('');
+        setAutoVerifyActive(false);
+        setAutoVerifyAttempt(0);
+        onUserUpdated();
+        return true;
+      } else {
+        if (!isAuto) {
+          setUpgradeError(`Pagamento ainda nao confirmado. Status atual: ${result.status}. Se no portal estiver PAGO, cole o codigo ORDE_... e verifique novamente.`);
+        }
+        return false;
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Falha ao verificar pagamento.';
+      if (!isAuto) {
+        if (/not found|resource not found/i.test(message)) {
+          setUpgradeError('Nao encontrei esse pagamento no Mercado Pago. Use o codigo do pedido que comeca com ORDE_ (voce encontra na URL de detalhes da transacao no portal do Mercado Pago).');
+        } else {
+          setUpgradeError(message);
+        }
+      }
+      return false;
+    } finally {
+      if (!isAuto) {
+        setVerifySubmitting(false);
+      }
+    }
+  };
+
+  const handleVerifyPayment = async () => {
+    await verifyPayment(false);
+  };
+
+  useEffect(() => {
+    if (!autoVerifyActive || verifySubmitting || isPremium) {
+      return;
+    }
+
+    if (!user.uid || (!pendingOrderId && !pendingCheckoutId)) {
+      setAutoVerifyActive(false);
+      return;
+    }
+
+    if (autoVerifyAttempt >= AUTO_VERIFY_MAX_ATTEMPTS) {
+      setAutoVerifyActive(false);
+      setUpgradeError('Pagamento ainda nao foi confirmado automaticamente. Clique em "Ja paguei, verificar agora" ou cole o ORDE_... se necessario.');
+      return;
+    }
+
+    const timerId = setTimeout(() => {
+      void verifyPayment(true).then((paid) => {
+        if (!paid) {
+          setAutoVerifyAttempt((prev) => prev + 1);
+        }
+      });
+    }, AUTO_VERIFY_INTERVAL_MS);
+
+    return () => {
+      clearTimeout(timerId);
+    };
+  }, [
+    autoVerifyActive,
+    autoVerifyAttempt,
+    isPremium,
+    pendingCheckoutId,
+    pendingOrderId,
+    user.uid,
+    verifySubmitting,
+  ]);
 
   const handleNome = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -91,6 +250,128 @@ export function AccountSettingsPage({ user, isPremium, premiumExpiresAt, onBack,
       setConfirmPw('');
     } catch (err) {
       setSenhaState({ submitting: false, error: getAuthErrorMessage(err), success: false });
+    }
+  };
+
+  const handleUpgrade = async () => {
+    if (!user.uid || !user.email) {
+      setUpgradeError('Nao foi possivel iniciar pagamento sem usuario logado.');
+      return;
+    }
+
+    const sanitizedTaxId = billingTaxId.replace(/\D/g, '');
+    if (sanitizedTaxId.length !== 11 && sanitizedTaxId.length !== 14) {
+      setUpgradeError('Informe um CPF (11 digitos) ou CNPJ (14 digitos) valido para pagamento.');
+      return;
+    }
+
+    setUpgradeSubmitting(true);
+    setUpgradeError(null);
+    setUpgradeSuccess(null);
+    setPixCode('');
+    setPendingOrderId('');
+    setPendingCheckoutId('');
+    setPendingReferenceId('');
+    setManualOrderInput('');
+    setAutoVerifyActive(false);
+    setAutoVerifyAttempt(0);
+
+    try {
+      const checkout = await createPagBankCheckout({
+        uid: user.uid,
+        email: user.email,
+        name: user.displayName ?? undefined,
+        taxId: sanitizedTaxId,
+      });
+
+      const paymentUrl = checkout.paymentUrl ?? null;
+      const isApiProtectedUrl = Boolean(paymentUrl && /api\.pagseguro\.com/i.test(paymentUrl));
+
+      if (checkout.pixCode) {
+        setPixCode(checkout.pixCode);
+        setPendingOrderId(checkout.orderId || '');
+        setPendingCheckoutId('');
+        setPendingReferenceId(checkout.referenceId || '');
+        setAutoVerifyActive(true);
+        setAutoVerifyAttempt(0);
+        try {
+          await navigator.clipboard.writeText(checkout.pixCode);
+          setUpgradeSuccess('PIX gerado com sucesso. Codigo PIX copiado para a area de transferencia. Verificando pagamento automaticamente por alguns instantes.');
+        } catch {
+          setUpgradeSuccess(`PIX gerado com sucesso. Copie e pague no app do banco: ${checkout.pixCode}. Verificando pagamento automaticamente por alguns instantes.`);
+        }
+      } else if (paymentUrl && !isApiProtectedUrl) {
+        setPixCode('');
+        setPendingOrderId(checkout.orderId || '');
+        setPendingCheckoutId('');
+        setPendingReferenceId(checkout.referenceId || '');
+        setAutoVerifyActive(true);
+        setAutoVerifyAttempt(0);
+        setUpgradeSuccess('Checkout criado. Abra o pagamento e conclua para ativar o Premium automaticamente.');
+        window.open(paymentUrl, '_blank', 'noopener,noreferrer');
+      } else {
+        setPixCode('');
+        setUpgradeError('Pagamento criado, mas o Mercado Pago nao retornou link publico. Tente novamente para gerar novo PIX.');
+      }
+    } catch (err) {
+      setUpgradeError(err instanceof Error ? err.message : 'Falha ao iniciar pagamento.');
+    } finally {
+      setUpgradeSubmitting(false);
+    }
+  };
+
+  const handlePixUpgrade = async () => {
+    if (!user.uid || !user.email) {
+      setUpgradeError('Nao foi possivel iniciar pagamento sem usuario logado.');
+      return;
+    }
+
+    const sanitizedTaxId = billingTaxId.replace(/\D/g, '');
+    if (sanitizedTaxId.length !== 11 && sanitizedTaxId.length !== 14) {
+      setUpgradeError('Informe um CPF (11 digitos) ou CNPJ (14 digitos) valido para pagamento.');
+      return;
+    }
+
+    setUpgradeSubmitting(true);
+    setUpgradeError(null);
+    setUpgradeSuccess(null);
+    setPixCode('');
+    setPendingOrderId('');
+    setPendingCheckoutId('');
+    setPendingReferenceId('');
+    setManualOrderInput('');
+    setAutoVerifyActive(false);
+    setAutoVerifyAttempt(0);
+
+    try {
+      const checkout = await createPagBankPixCheckout({
+        uid: user.uid,
+        email: user.email,
+        name: user.displayName ?? undefined,
+        taxId: sanitizedTaxId,
+      });
+
+      setPixCode(checkout.pixCode);
+      setPendingOrderId(checkout.paymentId || '');
+      setPendingCheckoutId('');
+      setPendingReferenceId(checkout.referenceId || '');
+      setAutoVerifyActive(true);
+      setAutoVerifyAttempt(0);
+
+      if (checkout.pixQrCodeBase64) {
+        setPixQrDataUrl(checkout.pixQrCodeBase64);
+      }
+
+      try {
+        await navigator.clipboard.writeText(checkout.pixCode);
+        setUpgradeSuccess('PIX gerado com sucesso. Codigo PIX copiado para a area de transferencia. Verificando pagamento automaticamente por alguns instantes.');
+      } catch {
+        setUpgradeSuccess(`PIX gerado com sucesso. Copie e pague no app do banco: ${checkout.pixCode}. Verificando pagamento automaticamente por alguns instantes.`);
+      }
+    } catch (err) {
+      setUpgradeError(err instanceof Error ? err.message : 'Falha ao iniciar pagamento PIX.');
+    } finally {
+      setUpgradeSubmitting(false);
     }
   };
 
@@ -247,9 +528,85 @@ export function AccountSettingsPage({ user, isPremium, premiumExpiresAt, onBack,
                     <p className="acc-plan-desc">
                       Você está no plano gratuito. Faça upgrade para acessar conteúdo exclusivo sem anúncios.
                     </p>
-                    <button className="acc-upgrade-btn" type="button" disabled>
-                      Em breve — Fazer Upgrade
-                    </button>
+                    <div className="acc-field" style={{ marginTop: '10px', marginBottom: '10px' }}>
+                      <label htmlFor="acc-tax-id">CPF/CNPJ para pagamento</label>
+                      <input
+                        id="acc-tax-id"
+                        type="text"
+                        value={billingTaxId}
+                        onChange={(e) => {
+                          const digits = e.target.value.replace(/\D/g, '').slice(0, 14);
+                          setBillingTaxId(digits);
+                          setUpgradeError(null);
+                        }}
+                        placeholder="Somente numeros"
+                        autoComplete="off"
+                        inputMode="numeric"
+                      />
+                    </div>
+                    <div className="acc-payment-actions">
+                      <button className="acc-upgrade-btn" type="button" onClick={handleUpgrade} disabled={upgradeSubmitting}>
+                        {upgradeSubmitting ? 'Abrindo checkout...' : 'Pagar com Mercado Pago'}
+                      </button>
+                      <button className="acc-pix-btn" type="button" onClick={handlePixUpgrade} disabled={upgradeSubmitting}>
+                        {upgradeSubmitting ? 'Gerando PIX...' : 'Pagar com PIX'}
+                      </button>
+                    </div>
+                    {upgradeSuccess && <p className="acc-success"><CheckIcon /> {upgradeSuccess}</p>}
+                    {autoVerifyActive && (
+                      <p className="acc-success">
+                        <CheckIcon /> Confirmacao automatica ativa ({Math.min(autoVerifyAttempt + 1, AUTO_VERIFY_MAX_ATTEMPTS)}/{AUTO_VERIFY_MAX_ATTEMPTS})...
+                      </p>
+                    )}
+                    {upgradeError && <p className="acc-error">{upgradeError}</p>}
+                    {(pendingOrderId || pendingCheckoutId) && (
+                      <>
+                        {pendingCheckoutId && !pendingOrderId && (
+                          <div className="acc-field acc-verify-order-field">
+                            <label htmlFor="acc-order-id">Se necessario, cole o codigo do pedido (ORDE_...)</label>
+                            <input
+                              id="acc-order-id"
+                              type="text"
+                              value={manualOrderInput}
+                              onChange={(e) => {
+                                setManualOrderInput(e.target.value);
+                                setUpgradeError(null);
+                              }}
+                              placeholder="ORDE_XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
+                              autoComplete="off"
+                            />
+                          </div>
+                        )}
+                        <button
+                          className="acc-verify-btn"
+                          type="button"
+                          onClick={handleVerifyPayment}
+                          disabled={verifySubmitting}
+                        >
+                          {verifySubmitting ? 'Verificando pagamento...' : 'Ja paguei, verificar agora'}
+                        </button>
+                      </>
+                    )}
+                    {pixCode && (
+                      <div className="acc-pix-box">
+                        <p className="acc-pix-title">Escaneie o QR Code PIX</p>
+                        {pixQrDataUrl ? (
+                          <img className="acc-pix-qr" src={pixQrDataUrl} alt="QR Code PIX para pagamento" />
+                        ) : (
+                          <div className="acc-pix-qr-loading">Gerando QR Code...</div>
+                        )}
+                        <button className="acc-pix-copy-btn" type="button" onClick={copyPixCode}>
+                          Copiar codigo PIX
+                        </button>
+                        <textarea
+                          className="acc-pix-code"
+                          value={pixCode}
+                          readOnly
+                          rows={3}
+                          aria-label="Codigo PIX"
+                        />
+                      </div>
+                    )}
                   </>
                 )}
               </div>
