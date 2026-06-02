@@ -30,8 +30,16 @@ interface Props {
   onLogout: () => void;
 }
 
+const parseSectionFromHash = (): Section => {
+  const hash = window.location.hash.toLowerCase();
+  if (hash.startsWith('#/configuracoes?') && hash.includes('secao=plano')) {
+    return 'plano';
+  }
+  return 'preferencias';
+};
+
 export function AccountSettingsPage({ user, isPremium, premiumExpiresAt, onBack, onUserUpdated, onLogout }: Props) {
-  const [section, setSection] = useState<Section>('preferencias');
+  const [section, setSection] = useState<Section>(() => parseSectionFromHash());
 
   // Nome
   const [nome, setNome] = useState(user.displayName ?? '');

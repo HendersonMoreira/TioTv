@@ -112,7 +112,7 @@ const parseGenreFromHash = (): number | null => {
 };
 
 const isKidsHash = (): boolean => window.location.hash === '#/kids';
-const isSettingsHash = (): boolean => window.location.hash === '#/configuracoes';
+const isSettingsHash = (): boolean => window.location.hash.startsWith('#/configuracoes');
 const isUpdatesHash = (): boolean => window.location.hash === '#/atualizacoes';
 const isForgotPasswordHash = (): boolean => window.location.hash === '#/esqueci-senha';
 const normalizeText = (value: string): string =>
@@ -1391,6 +1391,10 @@ function App() {
     window.location.hash = '#/configuracoes';
   };
 
+  const openPremiumCheckoutPage = () => {
+    window.location.hash = '#/configuracoes?secao=plano';
+  };
+
   const playContent = async (item: MediaItem, mediaType: 'movie' | 'tv' | 'anime') => {
     if (!authUser) {
       openRegisterModal('Voce precisa criar uma conta para assistir aos filmes e series.');
@@ -1595,7 +1599,7 @@ function App() {
                   className="account-btn"
                   onClick={() => {
                     setPremiumUpsellOpen(false);
-                    openUpdatesPage();
+                    openPremiumCheckoutPage();
                   }}
                 >
                   Quero ser Premium
@@ -1640,7 +1644,7 @@ function App() {
                   className="account-btn"
                   onClick={() => {
                     setPremiumUpsellOpen(false);
-                    openUpdatesPage();
+                    openPremiumCheckoutPage();
                   }}
                 >
                   Quero ser Premium
@@ -1970,7 +1974,7 @@ function App() {
                   className="account-btn"
                   onClick={() => {
                     setPremiumUpsellOpen(false);
-                    openUpdatesPage();
+                    openPremiumCheckoutPage();
                   }}
                 >
                   Quero ser Premium
