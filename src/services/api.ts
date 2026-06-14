@@ -226,7 +226,7 @@ export async function fetchTVShowDetails(contentId: number) {
 
   const show = (await showRes.json()) as TMDBShowDetails;
   const totalSeasons = show.number_of_seasons ?? 0;
-  const seasonsToFetch = Math.min(totalSeasons, 5);
+  const seasonsToFetch = totalSeasons;
 
   const seasonResults = await Promise.all(
     Array.from({ length: seasonsToFetch }, (_, i) =>
