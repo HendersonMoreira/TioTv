@@ -1988,7 +1988,16 @@ function App() {
           <p className="hero-kicker">Filmes Top 5</p>
           <h2>{currentHero ? getTitle(currentHero) : 'Carregando destaque...'}</h2>
           <p className="hero-subtext">Assistir agora</p>
-          <button className="hero-play-btn">Ver Filmes</button>
+          <button
+            type="button"
+            className="hero-play-btn"
+            onClick={() => {
+              if (!currentHero) return;
+              void playContent(currentHero, 'movie');
+            }}
+          >
+            Ver Filmes
+          </button>
         </div>
 
         <div className="hero-dots" role="tablist" aria-label="Selecionar destaque">
