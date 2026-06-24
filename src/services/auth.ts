@@ -307,6 +307,8 @@ const upsertUserProfile = async (user: User, preferredName?: string): Promise<vo
   // Define defaults apenas na criacao do documento; nao sobrescreve plano existente.
   if (!userSnap.exists()) {
     payload.isPremium = false;
+    payload.premiumTrialEligible = true;
+    payload.premiumTrialUsed = false;
     payload.createdAt = serverTimestamp();
   }
 

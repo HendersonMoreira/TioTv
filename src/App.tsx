@@ -6,6 +6,9 @@ import {
   loadCatalog,
   loadCatalogPage,
   loadMovieGenres,
+  loadUpcomingEpisodeReleases,
+  loadUpcomingReleases,
+  type UpcomingEpisodeRelease,
 } from './services/api';
 import { searchTmdbContent } from './services/tmdb';
 import type { CatalogType, MediaItem, MovieGenre, PlayerContent } from './types';
@@ -20,7 +23,7 @@ import { RegisterModal } from './components/RegisterModal';
 import { SearchModal } from './components/SearchModal';
 import { AccountSettingsPage } from './components/AccountSettingsPage';
 import { UpdatesPage } from './components/UpdatesPage.tsx';
-import { GearIcon, SearchIcon } from './components/icons';
+import { BellIcon, GearIcon, SearchIcon } from './components/icons';
 import { logout, startAuthSessionTracking, subscribeToAuth, type AuthUser } from './services/auth';
 import { doc, onSnapshot, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from './services/firebase';
@@ -44,6 +47,7 @@ const MAX_CATEGORY_PAGES = 1000;
 const ADULT_PIN = '1425';
 const ADULT_SESSION_KEY = 'tiotv_adult_unlocked';
 const FREE_TIER_YEAR = '2025';
+const PREMIUM_TRIAL_DAYS = 3;
 const WATCH_HISTORY_STORAGE_KEY = 'tiotv_watch_history_v1';
 const RECOMMENDATION_STOP_WORDS = new Set([
   'para',
@@ -125,6 +129,42 @@ const normalizeText = (value: string): string =>
 const getMediaYear = (item: MediaItem): string => {
   const rawDate = item.release_date || item.first_air_date || '';
   return rawDate.slice(0, 4);
+};
+
+const getReleaseDate = (item: MediaItem): string => item.release_date || item.first_air_date || '';
+
+type ReleaseNotice = {
+  id: string;
+  title: string;
+  kindLabel: string;
+  releaseDate: string;
+  daysLeft: number;
+  posterPath: string | null;
+  headline: string;
+};
+
+const getDaysUntilRelease = (releaseDate: string): number | null => {
+  if (!releaseDate) return null;
+
+  const parsed = new Date(`${releaseDate}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return null;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return Math.ceil((parsed.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+};
+
+const formatReleaseDateLabel = (releaseDate: string): string => {
+  if (!releaseDate) return 'Data indefinida';
+
+  const parsed = new Date(`${releaseDate}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return 'Data indefinida';
+
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: 'short',
+  }).format(parsed);
 };
 
 const isAllowedForFreeTier = (
@@ -605,6 +645,7 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [heroIndex, setHeroIndex] = useState(0);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [upcomingNotificationsOpen, setUpcomingNotificationsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<MediaItem[]>([]);
   const searchRequestIdRef = useRef(0);
@@ -613,6 +654,8 @@ function App() {
   const [kidsPageOpen, setKidsPageOpen] = useState<boolean>(() => isKidsHash());
   const [movieGenres, setMovieGenres] = useState<MovieGenre[]>([]);
   const [genresOpen, setGenresOpen] = useState(false);
+  const [upcomingReleases, setUpcomingReleases] = useState<MediaItem[]>([]);
+  const [upcomingEpisodeReleases, setUpcomingEpisodeReleases] = useState<UpcomingEpisodeRelease[]>([]);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [registerContextMessage, setRegisterContextMessage] = useState<string | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);
@@ -681,10 +724,35 @@ function App() {
           isPremiumPlus?: boolean;
           premiumExpiresAt?: Timestamp | null;
           premiumActivatedAt?: Timestamp | null;
+          premiumTrialEligible?: boolean;
+          premiumTrialUsed?: boolean;
+          premiumTrialStartedAt?: Timestamp | null;
+          premiumTrialEndsAt?: Timestamp | null;
         } | undefined;
 
         const rawPremium = Boolean(data?.isPremium);
         const rawPremiumPlus = Boolean(data?.isPremiumPlus);
+        const isTrialEligible = Boolean(data?.premiumTrialEligible);
+        const hasUsedTrial = Boolean(data?.premiumTrialUsed);
+
+        if (snapshot.exists() && isTrialEligible && !rawPremium && !hasUsedTrial) {
+          const now = new Date();
+          const trialEndsAt = new Date(now.getTime() + PREMIUM_TRIAL_DAYS * 24 * 60 * 60 * 1000);
+
+          updateDoc(userRef, {
+            isPremium: true,
+            isPremiumPlus: false,
+            premiumActivatedAt: Timestamp.fromDate(now),
+            premiumExpiresAt: Timestamp.fromDate(trialEndsAt),
+            premiumTrialUsed: true,
+            premiumTrialStartedAt: Timestamp.fromDate(now),
+            premiumTrialEndsAt: Timestamp.fromDate(trialEndsAt),
+          }).catch((err) => {
+            console.error('Falha ao ativar teste premium de 3 dias', err);
+          });
+
+          return;
+        }
 
         if (snapshot.exists() && data?.isPremiumPlus === undefined) {
           updateDoc(userRef, {
@@ -861,6 +929,58 @@ function App() {
 
   useEffect(() => {
     let isMounted = true;
+
+    const loadUpcoming = async () => {
+      try {
+        const releases = await loadUpcomingReleases(15);
+        if (!isMounted) return;
+        setUpcomingReleases(releases);
+      } catch (err) {
+        if (!isMounted) return;
+        console.error('Falha ao carregar lançamentos próximos', err);
+        setUpcomingReleases([]);
+      }
+    };
+
+    loadUpcoming();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadUpcomingEpisodes = async () => {
+      const sourceItems = [...catalog.series, ...catalog.animes];
+
+      if (sourceItems.length === 0) {
+        if (isMounted) {
+          setUpcomingEpisodeReleases([]);
+        }
+        return;
+      }
+
+      try {
+        const releases = await loadUpcomingEpisodeReleases(sourceItems, 15);
+        if (!isMounted) return;
+        setUpcomingEpisodeReleases(releases);
+      } catch (err) {
+        if (!isMounted) return;
+        console.error('Falha ao carregar episodios proximos', err);
+        setUpcomingEpisodeReleases([]);
+      }
+    };
+
+    void loadUpcomingEpisodes();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [catalog.series, catalog.animes]);
+
+  useEffect(() => {
+    let isMounted = true;
     const loadAll = async () => {
       try {
         setLoading(true);
@@ -918,6 +1038,130 @@ function App() {
   const firstHeroSrcSet = firstHero
     ? `${getBackdropUrlBySize(firstHero.backdrop_path, 'w500', 0)} 500w, ${getBackdropUrlBySize(firstHero.backdrop_path, 'w780', 0)} 780w, ${getBackdropUrlBySize(firstHero.backdrop_path, 'w1280', 0)} 1280w`
     : '';
+
+  const upcomingNotifications = useMemo<ReleaseNotice[]>(() => {
+    const visibleDays = 15;
+
+    const movieNotifications = upcomingReleases
+      .map((item) => {
+        const releaseDate = getReleaseDate(item);
+        const daysLeft = getDaysUntilRelease(releaseDate);
+
+        if (!releaseDate || daysLeft === null || daysLeft < 0 || daysLeft > visibleDays) {
+          return null;
+        }
+
+        const kindLabel = item.content_type === 'anime' ? 'Anime' : item.content_type === 'tv' ? 'Serie' : 'Filme';
+
+        return {
+          id: `${item.content_type || 'movie'}:${item.id}`,
+          title: getTitle(item),
+          kindLabel,
+          releaseDate,
+          daysLeft,
+          posterPath: item.poster_path ?? null,
+          headline:
+            daysLeft === 0
+              ? 'Lança hoje'
+              : daysLeft === 1
+                ? 'Falta 1 dia'
+                : `Faltam ${daysLeft} dias`,
+        } satisfies ReleaseNotice;
+      })
+      .filter((entry): entry is ReleaseNotice => entry !== null);
+
+    const episodeNotifications = upcomingEpisodeReleases
+      .map((item) => {
+        const releaseDate = item.release_date;
+        const daysLeft = getDaysUntilRelease(releaseDate);
+
+        if (!releaseDate || daysLeft === null || daysLeft < 0 || daysLeft > visibleDays) {
+          return null;
+        }
+
+        const episodeLabel = item.season_number && item.episode_number
+          ? `T${item.season_number} E${item.episode_number}`
+          : 'Episódio novo';
+
+        const episodeName = item.episode_name ? ` - ${item.episode_name}` : '';
+
+        return {
+          id: `${item.content_type}:${item.id}:${releaseDate}`,
+          title: `${item.title} • ${episodeLabel}${episodeName}`,
+          kindLabel: item.content_type === 'anime' ? 'Anime' : 'Serie',
+          releaseDate,
+          daysLeft,
+          posterPath: item.poster_path ?? null,
+          headline:
+            daysLeft === 0
+              ? 'Novo episódio hoje'
+              : daysLeft === 1
+                ? 'Novo episódio em 1 dia'
+                : `Novo episódio em ${daysLeft} dias`,
+        } satisfies ReleaseNotice;
+      })
+      .filter((entry): entry is ReleaseNotice => entry !== null);
+
+    return [...movieNotifications, ...episodeNotifications]
+      .sort((left, right) => left.releaseDate.localeCompare(right.releaseDate))
+      .slice(0, 8);
+  }, [upcomingEpisodeReleases, upcomingReleases]);
+
+  const upcomingNotificationCount = upcomingNotifications.length;
+
+  const toggleSearchOpen = () => {
+    setUpcomingNotificationsOpen(false);
+    setSearchOpen((prev) => !prev);
+  };
+
+  const toggleUpcomingNotifications = () => {
+    setSearchOpen(false);
+    setUpcomingNotificationsOpen((prev) => !prev);
+  };
+
+  const upcomingNotificationsPanel = (
+    <div className="release-notification-popover" role="dialog" aria-label="Próximos lançamentos">
+      <div className="release-notification-header">
+        <div>
+          <p className="release-notification-title">Próximos lançamentos e episódios</p>
+          <p className="release-notification-subtitle">Aviso automático para até 15 dias</p>
+        </div>
+        <span className="release-notification-pill">{upcomingNotificationCount}</span>
+      </div>
+
+      {upcomingNotifications.length > 0 ? (
+        <ul className="release-notification-list">
+          {upcomingNotifications.map((notice) => {
+            const posterUrl = notice.posterPath ? `https://image.tmdb.org/t/p/w185${notice.posterPath}` : '';
+
+            return (
+              <li className="release-notification-item" key={notice.id}>
+                {posterUrl ? (
+                  <img
+                    className="release-notification-thumb"
+                    src={posterUrl}
+                    alt={notice.title}
+                    loading="lazy"
+                    decoding="async"
+                  />
+                ) : (
+                  <div className="release-notification-thumb release-notification-thumb-fallback" aria-hidden="true" />
+                )}
+                <div className="release-notification-meta">
+                  <strong>{notice.title}</strong>
+                  <span>{notice.headline}</span>
+                  <small>{formatReleaseDateLabel(notice.releaseDate)}</small>
+                </div>
+                <div className="release-notification-kind">{notice.kindLabel}</div>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="release-notification-empty">Nenhum filme, serie ou anime novo nos proximos 15 dias.</p>
+      )}
+    </div>
+  );
 
   useEffect(() => {
     if (!firstHeroSrc) return;
@@ -1577,7 +1821,7 @@ function App() {
           searchOpen={searchOpen}
           searchQuery={searchQuery}
           searchResults={searchResults}
-          onSearchToggle={() => setSearchOpen((prev) => !prev)}
+          onSearchToggle={toggleSearchOpen}
           onSearchChange={handleSearch}
           onSelectSearchItem={handleSearchItemSelect}
           currentUserName={userFirstName}
@@ -1713,9 +1957,22 @@ function App() {
             </button>
           </nav>
           <div className="nav-actions">
+            <div className="release-notification-wrap">
+              <button
+                className="circle-btn release-notification-btn"
+                onClick={toggleUpcomingNotifications}
+                aria-label={`Abrir notificações de lançamentos (${upcomingNotificationCount})`}
+              >
+                <BellIcon />
+                {upcomingNotificationCount > 0 && (
+                  <span className="release-notification-badge">{upcomingNotificationCount}</span>
+                )}
+              </button>
+              {upcomingNotificationsOpen && upcomingNotificationsPanel}
+            </div>
             <button
               className="circle-btn"
-              onClick={() => setSearchOpen(!searchOpen)}
+              onClick={toggleSearchOpen}
               aria-label="Buscar"
             >
               <SearchIcon />
@@ -1865,9 +2122,22 @@ function App() {
             </button>
           </nav>
           <div className="nav-actions">
+            <div className="release-notification-wrap">
+              <button
+                className="circle-btn release-notification-btn"
+                onClick={toggleUpcomingNotifications}
+                aria-label={`Abrir notificações de lançamentos (${upcomingNotificationCount})`}
+              >
+                <BellIcon />
+                {upcomingNotificationCount > 0 && (
+                  <span className="release-notification-badge">{upcomingNotificationCount}</span>
+                )}
+              </button>
+              {upcomingNotificationsOpen && upcomingNotificationsPanel}
+            </div>
             <button
               className="circle-btn"
-              onClick={() => setSearchOpen(!searchOpen)}
+              onClick={toggleSearchOpen}
               aria-label="Buscar"
             >
               <SearchIcon />

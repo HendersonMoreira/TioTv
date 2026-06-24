@@ -64,6 +64,19 @@ type CatalogPageResult = {
   totalPages: number;
 };
 
+type TMDBReleaseItem = {
+  id: number;
+  title?: string;
+  name?: string;
+  overview?: string;
+  poster_path?: string | null;
+  backdrop_path?: string | null;
+  release_date?: string;
+  first_air_date?: string;
+  adult?: boolean;
+  genre_ids?: number[];
+};
+
 const ADULT_SEARCH_TERMS = ['hentai', 'porn', 'erotic', 'ecchi'];
 
 function buildCatalogUrl(type: CatalogType, page: number, genre?: string, genreId?: number, includeAdult = false): string {
@@ -120,6 +133,83 @@ export async function loadCatalog(
 ): Promise<MediaItem[]> {
   const data = await loadCatalogPage(type, page, genre);
   return data.items;
+}
+
+function getReleaseWindow(daysAhead: number) {
+  const now = new Date();
+  const end = new Date(now);
+  end.setDate(end.getDate() + daysAhead);
+
+  const formatDate = (value: Date) => value.toISOString().slice(0, 10);
+
+  return {
+    from: formatDate(now),
+    to: formatDate(end),
+  };
+}
+
+function mapReleaseItem(item: TMDBReleaseItem, contentType: 'movie' | 'tv' | 'anime'): MediaItem {
+  const releaseDate = item.release_date || item.first_air_date || '';
+
+  return {
+    id: item.id,
+    title: item.title || item.name || 'Sem titulo',
+    name: item.title || item.name || 'Sem titulo',
+    overview: item.overview || 'Descricao nao disponivel',
+    poster_path: item.poster_path || undefined,
+    backdrop_path: item.backdrop_path || undefined,
+    release_date: releaseDate,
+    first_air_date: releaseDate,
+    adult: Boolean(item.adult),
+    genre_ids: Array.isArray(item.genre_ids) ? item.genre_ids : undefined,
+    media_type: contentType === 'movie' ? 'movie' : 'tv',
+    content_type: contentType,
+  };
+}
+
+export async function loadUpcomingReleases(daysAhead = 5): Promise<MediaItem[]> {
+  if (!TMDB_API_KEY) {
+    console.warn('VITE_TMDB_API_KEY nao configurada; notificacoes de lancamentos desativadas.');
+    return [];
+  }
+
+  const { from, to } = getReleaseWindow(daysAhead);
+  const key = encodeURIComponent(TMDB_API_KEY);
+
+  const urls = [
+    `${TMDB_BASE}/discover/movie?api_key=${key}&language=pt-BR&sort_by=primary_release_date.asc&primary_release_date_gte=${from}&primary_release_date_lte=${to}&include_adult=false&page=1`,
+    `${TMDB_BASE}/discover/tv?api_key=${key}&language=pt-BR&without_genres=16&first_air_date_gte=${from}&first_air_date_lte=${to}&page=1`,
+    `${TMDB_BASE}/discover/tv?api_key=${key}&language=pt-BR&with_genres=16&with_origin_country=JP&first_air_date_gte=${from}&first_air_date_lte=${to}&page=1`,
+  ];
+
+  const responses = await Promise.all(
+    urls.map((url, index) =>
+      fetch(url, { cache: 'no-store' })
+        .then(async (response) => {
+          if (!response.ok) {
+            return [] as TMDBReleaseItem[];
+          }
+
+          const data = (await response.json()) as TMDBListResponse;
+          return Array.isArray(data.results) ? (data.results as TMDBReleaseItem[]) : [];
+        })
+        .then((items) => {
+          if (index === 0) return items.map((item) => mapReleaseItem(item, 'movie'));
+          if (index === 1) return items.map((item) => mapReleaseItem(item, 'tv'));
+          return items.map((item) => mapReleaseItem(item, 'anime'));
+        })
+        .catch(() => [] as MediaItem[]),
+    ),
+  );
+
+  const merged = responses.flat();
+  const unique = merged.filter((item, index, arr) => index === arr.findIndex((ref) => ref.id === item.id && ref.content_type === item.content_type));
+
+  return unique.sort((a, b) => {
+    const left = a.release_date || a.first_air_date || '';
+    const right = b.release_date || b.first_air_date || '';
+    return left.localeCompare(right);
+  });
 }
 
 async function searchAdultMoviesByLanguage(page: number, language: string): Promise<CatalogPageResult> {
@@ -200,6 +290,76 @@ type TMDBShowDetails = {
     season_number: number;
   } | null;
 };
+
+export type UpcomingEpisodeRelease = {
+  id: number;
+  title: string;
+  release_date: string;
+  first_air_date: string;
+  poster_path?: string | null;
+  backdrop_path?: string | null;
+  content_type: 'tv' | 'anime';
+  season_number?: number;
+  episode_number?: number;
+  episode_name?: string;
+};
+export async function loadUpcomingEpisodeReleases(
+  items: MediaItem[],
+  daysAhead = 15,
+): Promise<UpcomingEpisodeRelease[]> {
+  if (!TMDB_API_KEY) {
+    console.warn('VITE_TMDB_API_KEY nao configurada; notificacoes de episodios desativadas.');
+    return [];
+  }
+
+  const { from, to } = getReleaseWindow(daysAhead);
+  const key = encodeURIComponent(TMDB_API_KEY);
+
+  const candidates = Array.from(
+    new Map(
+      items
+        .filter((item) => item.content_type === 'tv' || item.content_type === 'anime')
+        .map((item) => [`${item.content_type}:${item.id}`, item]),
+    ).values(),
+  );
+
+  const releases = await Promise.all(
+    candidates.map(async (item) => {
+      const response = await fetch(
+        `${TMDB_BASE}/tv/${item.id}?api_key=${key}&language=pt-BR`,
+        { cache: 'no-store' },
+      );
+
+      if (!response.ok) {
+        return null;
+      }
+
+      const show = (await response.json()) as TMDBShowDetails;
+      const nextEpisode = show.next_episode_to_air;
+
+      if (!nextEpisode?.air_date || nextEpisode.air_date < from || nextEpisode.air_date > to) {
+        return null;
+      }
+
+      return {
+        id: show.id,
+        title: show.name ?? item.title ?? item.name ?? 'Sem titulo',
+        release_date: nextEpisode.air_date,
+        first_air_date: nextEpisode.air_date,
+        poster_path: show.poster_path ?? item.poster_path ?? null,
+        backdrop_path: show.backdrop_path ?? item.backdrop_path ?? null,
+        content_type: item.content_type === 'anime' ? 'anime' : 'tv',
+        season_number: nextEpisode.season_number,
+        episode_number: nextEpisode.episode_number,
+        episode_name: nextEpisode.name,
+      } as UpcomingEpisodeRelease;
+    }),
+  );
+
+  return releases
+    .filter((release): release is UpcomingEpisodeRelease => Boolean(release))
+    .sort((left, right) => left.release_date.localeCompare(right.release_date));
+}
 
 type TMDBSeasonDetails = {
   episodes?: Array<{

@@ -6,6 +6,14 @@ export function SearchIcon() {
   );
 }
 
+export function BellIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22zm8-6V11a8 8 0 1 0-16 0v5l-2 2v1h20v-1l-2-2zm-2 1H6v-6a6 6 0 1 1 12 0v6z" />
+    </svg>
+  );
+}
+
 export function HeartIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
