@@ -315,9 +315,64 @@ export async function loadUpcomingEpisodeReleases(
   const { from, to } = getReleaseWindow(daysAhead);
   const key = encodeURIComponent(TMDB_API_KEY);
 
+  // Séries/cartoons globais em exibição agora (on_the_air cobre os próximos 7 dias)
+  type SourceDef = { url: string; type: 'tv' | 'anime' };
+
+  const sourceDefs: SourceDef[] = [
+    { url: `${TMDB_BASE}/tv/on_the_air?api_key=${key}&language=pt-BR&page=1`, type: 'tv' },
+    { url: `${TMDB_BASE}/tv/on_the_air?api_key=${key}&language=pt-BR&page=2`, type: 'tv' },
+    // Animes JP com episódio dentro da janela de datas (air_date filter)
+    {
+      url: `${TMDB_BASE}/discover/tv?api_key=${key}&language=pt-BR&with_genres=16&with_origin_country=JP&air_date.gte=${from}&air_date.lte=${to}&sort_by=popularity.desc&page=1`,
+      type: 'anime',
+    },
+    {
+      url: `${TMDB_BASE}/discover/tv?api_key=${key}&language=pt-BR&with_genres=16&with_origin_country=JP&air_date.gte=${from}&air_date.lte=${to}&sort_by=popularity.desc&page=2`,
+      type: 'anime',
+    },
+    // Animes de outras origens (CN, KR etc.)
+    {
+      url: `${TMDB_BASE}/discover/tv?api_key=${key}&language=pt-BR&with_genres=16&without_keywords=210024&air_date.gte=${from}&air_date.lte=${to}&sort_by=popularity.desc&page=1`,
+      type: 'anime',
+    },
+  ];
+
+  const onAirResults = await Promise.all(
+    sourceDefs.map(({ url, type }) =>
+      fetch(url, { cache: 'no-store' })
+        .then(async (r) => {
+          if (!r.ok) return [] as TMDBReleaseItem[];
+          const d = (await r.json()) as TMDBListResponse;
+          return Array.isArray(d.results) ? (d.results as TMDBReleaseItem[]) : [];
+        })
+        .then((rawItems) =>
+          rawItems.map((raw): MediaItem => ({
+            id: raw.id,
+            title: raw.name ?? raw.title ?? 'Sem titulo',
+            name: raw.name ?? raw.title ?? 'Sem titulo',
+            overview: raw.overview ?? '',
+            poster_path: raw.poster_path ?? undefined,
+            backdrop_path: raw.backdrop_path ?? undefined,
+            release_date: raw.first_air_date ?? raw.release_date ?? '',
+            first_air_date: raw.first_air_date ?? raw.release_date ?? '',
+            adult: false,
+            genre_ids: Array.isArray(raw.genre_ids) ? raw.genre_ids : undefined,
+            media_type: 'tv' as const,
+            content_type: type,
+          }))
+        )
+        .catch(() => [] as MediaItem[]),
+    ),
+  );
+
+  const extraItems: MediaItem[] = onAirResults.flat();
+
+  // O Map usa "content_type:id" como chave.
+  // Itens do catálogo têm prioridade pois vêm primeiro no spread;
+  // o content_type do catálogo (ex: 'anime') NÃO é sobrescrito pelo on_the_air ('tv').
   const candidates = Array.from(
     new Map(
-      items
+      [...items, ...extraItems]
         .filter((item) => item.content_type === 'tv' || item.content_type === 'anime')
         .map((item) => [`${item.content_type}:${item.id}`, item]),
     ).values(),

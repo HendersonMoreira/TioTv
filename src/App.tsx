@@ -1104,7 +1104,7 @@ function App() {
 
     return [...movieNotifications, ...episodeNotifications]
       .sort((left, right) => left.releaseDate.localeCompare(right.releaseDate))
-      .slice(0, 8);
+      .slice(0, 15);
   }, [upcomingEpisodeReleases, upcomingReleases]);
 
   const upcomingNotificationCount = upcomingNotifications.length;
