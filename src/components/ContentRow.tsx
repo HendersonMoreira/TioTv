@@ -1,4 +1,6 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
+import Glider from 'glider-js';
+import 'glider-js/glider.min.css';
 import { getPosterUrl, getPosterUrlBySize, getTitle, getYear } from '../services/api';
 import type { MediaItem } from '../types';
 import { ChevronLeft, ChevronRight, HeartIcon } from './icons';
@@ -26,17 +28,37 @@ export function ContentRow({
   onRemoveItem,
   isItemLocked,
 }: ContentRowProps) {
-  const trackRef = useRef<HTMLDivElement | null>(null);
+  const gliderElRef = useRef<HTMLDivElement | null>(null);
+  const prevArrowRef = useRef<HTMLButtonElement | null>(null);
+  const nextArrowRef = useRef<HTMLButtonElement | null>(null);
+  const gliderRef = useRef<Glider | null>(null);
 
-  const scrollByCard = (direction: 'left' | 'right') => {
-    const track = trackRef.current;
-    if (!track) return;
-    const cardSize = window.innerWidth < 768 ? 170 : 220;
-    track.scrollBy({
-      left: direction === 'left' ? -cardSize * 2 : cardSize * 2,
-      behavior: 'smooth',
-    });
-  };
+  useEffect(() => {
+    const el = gliderElRef.current;
+    if (!el) return;
+
+    if (!gliderRef.current) {
+      // skipTrack: a track (`.glider-track`) ja e renderizada pelo React, o Glider so deve usa-la
+      gliderRef.current = new Glider(el, {
+        skipTrack: true,
+        slidesToShow: 2.3,
+        slidesToScroll: 2,
+        draggable: true,
+        dragVelocity: 2,
+        arrows: {
+          prev: prevArrowRef.current,
+          next: nextArrowRef.current,
+        },
+        responsive: [
+          { breakpoint: 480, settings: { slidesToShow: 3.2, slidesToScroll: 3 } },
+          { breakpoint: 768, settings: { slidesToShow: 4.2, slidesToScroll: 4 } },
+          { breakpoint: 1100, settings: { slidesToShow: 5, slidesToScroll: 5 } },
+        ],
+      });
+    } else {
+      gliderRef.current.refresh(true);
+    }
+  }, [items]);
 
   const handleItemClick = (item: MediaItem) => {
     if (!onPlayItem) return;
@@ -60,11 +82,12 @@ export function ContentRow({
       </div>
 
       <div className="row-wrapper">
-        <button className="row-arrow left" onClick={() => scrollByCard('left')} aria-label={`Voltar ${title}`}>
+        <button ref={prevArrowRef} className="row-arrow left" aria-label={`Voltar ${title}`}>
           <ChevronLeft />
         </button>
 
-        <div className="row-track" ref={trackRef}>
+        <div className="row-track" ref={gliderElRef}>
+          <div className="glider-track">
           {items.map((item, index) => {
             const isFavorite = favorites.includes(item.id);
             let mediaType: 'movie' | 'tv' | 'anime' = item.content_type || 'movie';
@@ -124,9 +147,10 @@ export function ContentRow({
               </article>
             );
           })}
+          </div>
         </div>
 
-        <button className="row-arrow right" onClick={() => scrollByCard('right')} aria-label={`Avancar ${title}`}>
+        <button ref={nextArrowRef} className="row-arrow right" aria-label={`Avancar ${title}`}>
           <ChevronRight />
         </button>
       </div>

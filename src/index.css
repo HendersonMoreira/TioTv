@@ -639,8 +639,6 @@ a {
 }
 
 .row-track {
-  display: flex;
-  gap: 14px;
   overflow-x: auto;
   scroll-behavior: smooth;
   scrollbar-width: none;
@@ -651,15 +649,39 @@ a {
   display: none;
 }
 
+.row-track .glider-track {
+  display: flex;
+  gap: 14px;
+}
+
 .movie-card {
   position: relative;
-  flex: 0 0 200px;
+  flex: 0 0 auto;
+  width: 42%;
   aspect-ratio: 2 / 3;
   border-radius: 14px;
   overflow: hidden;
   background: #121933;
   border: 1px solid rgba(255, 255, 255, 0.05);
   transition: transform 0.25s ease;
+}
+
+@media (min-width: 480px) {
+  .movie-card {
+    width: 30%;
+  }
+}
+
+@media (min-width: 768px) {
+  .movie-card {
+    width: 23%;
+  }
+}
+
+@media (min-width: 1100px) {
+  .movie-card {
+    width: 19%;
+  }
 }
 
 .movie-card:hover {

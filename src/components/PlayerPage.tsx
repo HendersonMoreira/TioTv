@@ -56,8 +56,8 @@ const SERVER_EMBED_BUILDERS: Record<PlayerServer, {
   },
   myembed: {
     movie: (id: number) => `https://myembed.biz/filme/${id}`,
-    tv: (id: number) => `https://myembed.biz/serie/${id}`,
-    anime: (id: number) => `https://myembed.biz/serie/${id}`,
+    tv: (id: number, season: number, episode: number) => `https://myembed.biz/serie/${id}/${season}/${episode}`,
+    anime: (id: number, season: number, episode: number) => `https://myembed.biz/serie/${id}/${season}/${episode}`,
   },
 };
 
