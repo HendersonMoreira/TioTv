@@ -26,7 +26,8 @@ type CreatePagBankCheckoutResponse = {
   };
 };
 
-const PAYMENTS_API_BASE = import.meta.env.VITE_PAYMENTS_API_BASE_URL || 'http://localhost:8787';
+const PAYMENTS_API_BASE = import.meta.env.VITE_PAYMENTS_API_BASE_URL
+  || (typeof window !== 'undefined' && window.location.hostname !== 'localhost' ? window.location.origin : 'http://localhost:8787');
 
 async function readJsonOrText(response: Response): Promise<unknown> {
   const contentType = response.headers.get('content-type') || '';

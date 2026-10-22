@@ -99,6 +99,8 @@ export function ContentRow({
               <article 
                 className={isLocked ? 'movie-card locked' : 'movie-card'}
                 key={`${item.id}-${index}`}
+                data-preview-id={item.id}
+                data-preview-type={mediaType}
                 onClick={() => handleItemClick(item)}
                 role="button"
                 tabIndex={0}

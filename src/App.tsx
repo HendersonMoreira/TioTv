@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   fetchTVShowDetails,
   getBackdropUrlBySize,
+  getPosterUrlBySize,
   getTitle,
   loadCatalog,
   loadCatalogPage,
@@ -23,7 +24,12 @@ import { RegisterModal } from './components/RegisterModal';
 import { SearchModal } from './components/SearchModal';
 import { AccountSettingsPage } from './components/AccountSettingsPage';
 import { UpdatesPage } from './components/UpdatesPage.tsx';
-import { BellIcon, GearIcon, SearchIcon } from './components/icons';
+import { BellIcon, GearIcon, HeartIcon, SearchIcon } from './components/icons';
+import { HoverPreviewHost } from './components/HoverPreview';
+import { AnimeFeature } from './components/AnimeFeature';
+import { Top10Row } from './components/Top10Row';
+import { PanelRows } from './components/PanelRows';
+import { MyListPage, type MyListEntry } from './components/MyListPage';
 import { logout, startAuthSessionTracking, subscribeToAuth, type AuthUser } from './services/auth';
 import { doc, onSnapshot, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from './services/firebase';
@@ -118,6 +124,7 @@ const parseGenreFromHash = (): number | null => {
 const isKidsHash = (): boolean => window.location.hash === '#/kids';
 const isSettingsHash = (): boolean => window.location.hash.startsWith('#/configuracoes');
 const isUpdatesHash = (): boolean => window.location.hash === '#/atualizacoes';
+const isMyListHash = (): boolean => window.location.hash === '#/minha-lista';
 const isForgotPasswordHash = (): boolean => window.location.hash === '#/esqueci-senha';
 const normalizeText = (value: string): string =>
   value
@@ -662,6 +669,7 @@ function App() {
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState<boolean>(() => isForgotPasswordHash());
   const [settingsOpen, setSettingsOpen] = useState<boolean>(() => isSettingsHash());
   const [updatesOpen, setUpdatesOpen] = useState<boolean>(() => isUpdatesHash());
+  const [myListOpen, setMyListOpen] = useState<boolean>(() => isMyListHash());
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [isPremiumUser, setIsPremiumUser] = useState(false);
   const [, setIsPremiumPlusUser] = useState(false);
@@ -898,6 +906,7 @@ function App() {
       setForgotPasswordOpen(isForgotPasswordHash());
       setSettingsOpen(isSettingsHash());
       setUpdatesOpen(isUpdatesHash());
+      setMyListOpen(isMyListHash());
       setGenresOpen(false);
     };
 
@@ -1203,24 +1212,6 @@ function App() {
 
     const userHistory = authUser ? watchHistory : [];
 
-    const continueWatching = userHistory
-      .filter((entry) => entry.type === 'movie' || !entry.completed)
-      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-      .map((entry) => {
-        const fallbackItem = {
-          ...entry.item,
-          id: entry.contentId,
-          content_type: entry.type,
-        } satisfies MediaItem;
-
-        return catalogLookup.get(entry.key) || fallbackItem;
-      })
-      .filter((item, index, arr) => {
-        const itemType = item.content_type || 'movie';
-        return index === arr.findIndex((ref) => ref.id === item.id && (ref.content_type || 'movie') === itemType);
-      })
-      .slice(0, 18);
-
     const watchedKeys = new Set(userHistory.map((entry) => entry.key));
     const recommendationTerms = userHistory.reduce<Map<string, number>>((acc, entry) => {
       const terms = extractRecommendationTerms(entry.item);
@@ -1262,12 +1253,14 @@ function App() {
 
     const desenhos = catalog.animes.slice(0, 18);
     const series = catalog.series.slice(0, 18);
+    const topMovies = catalog.filmes.filter((item) => item.poster_path).slice(0, 10);
+    const theatrical = catalog.filmes.filter((item) => item.poster_path).slice(10, 28);
+    const newMovies = [...catalog.filmes]
+      .filter((item) => item.poster_path)
+      .sort((a, b) => (b.release_date || '').localeCompare(a.release_date || ''))
+      .slice(0, 18);
 
     const nextRows: RowDefinition[] = [];
-
-    if (authUser && continueWatching.length > 0) {
-      nextRows.push({ id: 'continue-watching', title: 'Assistidos e em andamento', items: continueWatching, openCategory: false });
-    }
 
     if (authUser && recommendationCandidates.length > 0) {
       nextRows.push({ id: 'recommended-history', title: 'Filmes e series para voce', items: recommendationCandidates, openCategory: false });
@@ -1276,7 +1269,10 @@ function App() {
     nextRows.push(
       { id: 'terror', title: 'Filmes de Terror', items: catalog.terror.slice(0, 18), openCategory: true },
       { id: 'familia', title: 'Filmes pra Familia', items: catalog.familia.slice(0, 18), openCategory: true },
-      { id: 'series', title: 'Series para Maratonar', items: series, openCategory: true },
+      { id: 'novos-filmes', title: 'Novos Filmes', items: newMovies, openCategory: false },
+      { id: 'top-filmes', title: 'Top 10 Filmes Hoje', items: topMovies, openCategory: false },
+      { id: 'em-cartaz', title: 'Filmes em Cartaz', items: theatrical, openCategory: false },
+      { id: 'top-series', title: 'Top 10 Series Hoje', items: series.slice(0, 10), openCategory: false },
     );
 
     nextRows.splice(2, 0, { id: 'animes', title: 'Animes', items: desenhos, openCategory: true });
@@ -1496,10 +1492,12 @@ function App() {
     setFavorites((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
   };
 
-  const removeFromContinueWatching = (item: MediaItem) => {
-    const itemType = item.content_type || item.media_type || 'movie';
-    const key = `${itemType}:${item.id}`;
-    setWatchHistory((prev) => prev.filter((entry) => entry.key !== key));
+  const removeFromMyList = (entry: MyListEntry) => {
+    setWatchHistory((prev) => prev.filter((current) => current.key !== entry.key));
+  };
+
+  const openMyListPage = () => {
+    window.location.hash = '#/minha-lista';
   };
 
   const openCategoryPage = (id: CategoryPageId) => {
@@ -1856,6 +1854,34 @@ function App() {
     );
   }
 
+  const panelRowIds = new Set(rows.filter((row) => row.openCategory).slice(0, 3).map((row) => row.id));
+
+  if (myListOpen) {
+    return (
+      <>
+        <MyListPage
+          entries={watchHistory}
+          loggedIn={Boolean(authUser)}
+          onBack={closeCategoryPage}
+          onLogin={openLoginModal}
+          onPlayItem={playContent}
+          onRemove={removeFromMyList}
+          currentUserName={authUser ? userFirstName : undefined}
+          onOpenSettings={openSettingsPage}
+          onLogout={handleLogout}
+          isItemLocked={isItemPremiumLocked}
+        />
+        <LoginModal
+          open={loginOpen}
+          onClose={() => setLoginOpen(false)}
+          onRegister={() => openRegisterModal()}
+          onForgotPassword={openForgotPasswordPage}
+          onSuccess={onAuthSuccess}
+        />
+      </>
+    );
+  }
+
   if (kidsPageOpen) {
     const safeCartoons = prioritizeKidsItems(catalog.animes.filter(isKidsSafeItem));
     const safeFamily = prioritizeKidsItems(catalog.familia.filter(isKidsSafeItem));
@@ -1957,6 +1983,9 @@ function App() {
             </button>
           </nav>
           <div className="nav-actions">
+            <button className="circle-btn mylist-nav-btn" onClick={openMyListPage} aria-label="Minha lista" title="Minha lista">
+              <HeartIcon />
+            </button>
             <div className="release-notification-wrap">
               <button
                 className="circle-btn release-notification-btn"
@@ -2122,6 +2151,9 @@ function App() {
             </button>
           </nav>
           <div className="nav-actions">
+            <button className="circle-btn mylist-nav-btn" onClick={openMyListPage} aria-label="Minha lista" title="Minha lista">
+              <HeartIcon />
+            </button>
             <div className="release-notification-wrap">
               <button
                 className="circle-btn release-notification-btn"
@@ -2255,29 +2287,51 @@ function App() {
         )}
 
         <div className="hero-content">
-          <p className="hero-kicker">Filmes Top 5</p>
           <h2>{currentHero ? getTitle(currentHero) : 'Carregando destaque...'}</h2>
-          <p className="hero-subtext">Assistir agora</p>
-          <button
-            type="button"
-            className="hero-play-btn"
-            onClick={() => {
-              if (!currentHero) return;
-              void playContent(currentHero, 'movie');
-            }}
-          >
-            Ver Filmes
-          </button>
+          {currentHero && (
+            <div className="hero-badges">
+              <span className="hero-badge hot">Top 5</span>
+              <span className="hero-badge">
+                {(currentHero.release_date || currentHero.first_air_date || '').slice(0, 4) || 'Novo'}
+              </span>
+              <span className="hero-badge">Filme</span>
+            </div>
+          )}
+          {currentHero?.overview && <p className="hero-overview">{currentHero.overview}</p>}
+          <div className="hero-actions">
+            <button
+              type="button"
+              className="hero-play-btn"
+              onClick={() => {
+                if (!currentHero) return;
+                void playContent(currentHero, 'movie');
+              }}
+            >
+              Assistir agora
+            </button>
+            <button
+              type="button"
+              className="hero-info-btn"
+              onClick={() => {
+                if (!currentHero) return;
+                void playContent(currentHero, 'movie');
+              }}
+            >
+              Mais info
+            </button>
+          </div>
         </div>
 
-        <div className="hero-dots" role="tablist" aria-label="Selecionar destaque">
+        <div className="hero-thumbs" role="tablist" aria-label="Selecionar destaque">
           {heroItems.map((item, index) => (
             <button
               key={item.id}
-              className={index === heroIndex ? 'dot active' : 'dot'}
+              className={index === heroIndex ? 'hero-thumb active' : 'hero-thumb'}
               onClick={() => setHeroIndex(index)}
               aria-label={`Abrir ${getTitle(item)}`}
-            />
+            >
+              <img src={getBackdropUrlBySize(item.backdrop_path, 'w300', index)} alt="" />
+            </button>
           ))}
         </div>
       </section>
@@ -2286,9 +2340,52 @@ function App() {
         {loading && <p className="status">Carregando catalogo...</p>}
         {error && <p className="status error">{error}</p>}
 
+        {!loading && !error && (
+          <section className="topics-section">
+            <div className="topics-head">
+              <h2>O que voce quer assistir?</h2>
+            </div>
+            <div className="topics-row">
+              {[
+                { id: 'terror', label: 'Terror', tone: 'blue', item: catalog.terror[0] },
+                { id: 'familia', label: 'Para a familia', tone: 'green', item: catalog.familia[0] },
+                { id: 'series', label: 'Series', tone: 'orange', item: catalog.series[0] },
+                { id: 'animes', label: 'Animes', tone: 'pink', item: catalog.animes[0] },
+                { id: 'desenhos', label: 'Desenhos', tone: 'teal', item: catalog.animes[1] },
+              ].map((topic) => (
+                <button
+                  key={topic.id}
+                  type="button"
+                  className={'topic-card topic-' + topic.tone}
+                  onClick={() => openCategoryPage(topic.id as CategoryPageId)}
+                >
+                  <span className="topic-text">
+                    <strong>{topic.label}</strong>
+                    <small>Ver topico</small>
+                  </span>
+                  {topic.item?.poster_path && (
+                    <img src={getPosterUrlBySize(topic.item.poster_path, 'w342', 0)} alt="" />
+                  )}
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+        {!loading && !error && (
+          <PanelRows
+            rows={rows.filter((row) => row.openCategory).slice(0, 3)}
+            genres={movieGenres}
+            onOpenCategory={(id) => openCategoryPage(id as CategoryPageId)}
+            onPlayItem={playContent}
+            isItemLocked={isItemPremiumLocked}
+          />
+        )}
+
         {!loading &&
           !error &&
-          rows.map((row) => (
+          rows.filter((row) => !panelRowIds.has(row.id)).map((row) => row.id.startsWith('top-') ? (
+            <Top10Row key={row.id} title={row.title} items={row.items} mediaType={row.id === 'top-series' ? 'tv' : 'movie'} onPlayItem={playContent} />
+          ) : (
             <ContentRow
               key={row.id}
               id={row.id}
@@ -2298,11 +2395,81 @@ function App() {
               onToggleFavorite={toggleFavorite}
               onOpenCategory={row.openCategory ? (id) => openCategoryPage(id as CategoryPageId) : undefined}
               onPlayItem={playContent}
-              onRemoveItem={row.id === 'continue-watching' ? removeFromContinueWatching : undefined}
               isItemLocked={isItemPremiumLocked}
             />
           ))}
+
+        {!loading && !error && (
+          <AnimeFeature
+            title="Biblioteca de Animes"
+            items={catalog.animes}
+            genres={movieGenres}
+            favorites={favorites}
+            onToggleFavorite={toggleFavorite}
+            onPlayItem={playContent}
+            onViewAll={() => openCategoryPage('animes')}
+          />
+        )}
       </main>
+
+      <HoverPreviewHost
+        items={[...catalog.filmes, ...catalog.series, ...catalog.animes, ...catalog.terror, ...catalog.familia]}
+        genres={movieGenres}
+        favorites={favorites}
+        onToggleFavorite={toggleFavorite}
+        onPlay={playContent}
+        isLocked={isItemPremiumLocked}
+      />
+
+      <footer className="site-footer">
+        <div className="site-footer-grid">
+          <div className="sf-brand-col">
+            <h2 className="site-footer-brand">TioTV</h2>
+            <p className="sf-label">Conecte-se com a gente</p>
+            <div className="sf-social">
+              <span aria-label="Facebook" title="Facebook"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M13.5 21v-7.5H16l.5-3h-3V8.6c0-.9.3-1.6 1.6-1.6h1.5V4.3C16.3 4.2 15.4 4 14.4 4 12.2 4 10.5 5.3 10.5 8v2.5H8v3h2.5V21z"/></svg></span>
+              <span aria-label="Twitter" title="Twitter"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M22 5.9c-.7.3-1.5.5-2.4.6.9-.5 1.5-1.3 1.800-2.300-.8.5-1.700.800-2.600 1a4.100 4.100 0 0 0-7 3.700A11.600 11.600 0 0 1 3.400 4.700a4.100 4.100 0 0 0 1.300 5.500c-.7 0-1.300-.2-1.900-.5 0 2 1.400 3.700 3.300 4.100-.6.200-1.200.2-1.800.1.500 1.600 2 2.800 3.800 2.800A8.200 8.200 0 0 1 2 18.300 11.600 11.600 0 0 0 8.300 20c7.500 0 11.700-6.300 11.700-11.700v-.5c.8-.6 1.500-1.300 2-2.200z"/></svg></span>
+              <span aria-label="GitHub" title="GitHub"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.200 19.500c.5.100.7-.2.7-.5v-1.800c-2.800.6-3.400-1.200-3.400-1.200-.5-1.200-1.100-1.500-1.100-1.500-.9-.6.1-.6.1-.6 1 .1 1.500 1 1.500 1 .9 1.500 2.300 1.100 2.900.8.1-.7.4-1.100.6-1.400-2.200-.3-4.600-1.100-4.600-5 0-1.100.4-2 1-2.700-.1-.3-.4-1.300.1-2.700 0 0 .8-.3 2.800 1a9.600 9.600 0 0 1 5 0c1.900-1.300 2.800-1 2.800-1 .5 1.400.2 2.400.1 2.700.6.7 1 1.600 1 2.700 0 3.900-2.400 4.700-4.600 5 .4.300.7.900.7 1.800v2.700c0 .3.2.6.7.5A10 10 0 0 0 12 2z"/></svg></span>
+            </div>
+            <p className="sf-label">Baixe o app do TioTV</p>
+            <div className="sf-stores">
+              <span className="sf-store"><small>Baixar na</small><strong>App Store</strong></span>
+              <span className="sf-store"><small>Disponivel no</small><strong>Google Play</strong></span>
+            </div>
+          </div>
+          <div>
+            <h4>Filmes em destaque</h4>
+            {catalog.filmes.slice(0, 5).map((item) => (
+              <button key={item.id} type="button" onClick={() => playContent(item, 'movie')}>{getTitle(item)}</button>
+            ))}
+          </div>
+          <div className="sf-genres">
+            <h4>Generos</h4>
+            <div className="sf-genres-grid">
+              {movieGenres.slice(0, 12).map((genre) => (
+                <button key={genre.id} type="button" onClick={() => openGenrePage(genre.id)}>{genre.name}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <h4>Ajuda</h4>
+            <button type="button" onClick={authUser ? openSettingsPage : openLoginModal}>Minha conta</button>
+            <button type="button" onClick={openMyListPage}>Minha lista</button>
+            <button type="button" onClick={openUpdatesPage}>Atualizacoes</button>
+          </div>
+          <div>
+            <h4>Navegar</h4>
+            <button type="button" onClick={goToInicio}>Inicio</button>
+            <button type="button" onClick={goToFilmes}>Filmes</button>
+            <button type="button" onClick={goToSeries}>Series</button>
+            <button type="button" onClick={openKidsPage}>Kids</button>
+          </div>
+        </div>
+        <div className="site-footer-bottom">
+          <span>Copyright © {new Date().getFullYear()} TioTV. Todos os direitos reservados.</span>
+          <button type="button" className="sf-top" aria-label="Voltar ao topo" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>↑</button>
+        </div>
+      </footer>
     </div>
   );
 }

@@ -492,3 +492,33 @@ export async function fetchTVShowDetails(contentId: number) {
     },
   };
 }
+
+const trailerCache = new Map<string, string | null>();
+
+export async function loadTrailerKey(id: number, type: 'movie' | 'tv' | 'anime'): Promise<string | null> {
+  const kind = type === 'movie' ? 'movie' : 'tv';
+  const cacheKey = `${kind}-${id}`;
+  if (trailerCache.has(cacheKey)) return trailerCache.get(cacheKey) ?? null;
+
+  const key = encodeURIComponent(TMDB_API_KEY);
+  const pick = (list: Array<{ site: string; type: string; key: string }>) =>
+    list.find((v) => v.site === 'YouTube' && v.type === 'Trailer') || list.find((v) => v.site === 'YouTube' && v.type === 'Teaser');
+
+  let result: string | null = null;
+  try {
+    for (const lang of ['pt-BR', 'en-US']) {
+      const res = await fetch(`${TMDB_BASE}/${kind}/${id}/videos?api_key=${key}&language=${lang}`);
+      if (!res.ok) continue;
+      const data = await res.json();
+      const found = pick(data.results || []);
+      if (found) {
+        result = found.key;
+        break;
+      }
+    }
+  } catch {
+    result = null;
+  }
+  trailerCache.set(cacheKey, result);
+  return result;
+}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Episode, PlayerContent } from '../types';
 import { ChevronLeft, ChevronRight, GearIcon } from './icons';
 import '../styles/player.css';
@@ -97,6 +97,9 @@ export function PlayerPage({
   const [resumePromptOpen, setResumePromptOpen] = useState(false);
   const [resumeCandidate, setResumeCandidate] = useState<SavedProgress | null>(null);
   const [resumeChecked, setResumeChecked] = useState(false);
+  const [playerFullscreen, setPlayerFullscreen] = useState(false);
+  const [fullscreenError, setFullscreenError] = useState('');
+  const videoContainerRef = useRef<HTMLDivElement>(null);
 
   const episodes = useMemo(() => {
     if (!content.episodes || type === 'movie') {
@@ -135,6 +138,7 @@ export function PlayerPage({
     currentSeason,
     currentEpisode,
   );
+  const isWatchplay = selectedServer === 'myembed';
 
   const seasons = useMemo(() => Object.keys(episodes).map(Number).sort((a, b) => a - b), [episodes]);
 
@@ -151,6 +155,35 @@ export function PlayerPage({
   useEffect(() => {
     setShowNoSourceHint(false);
   }, [playerUrl]);
+
+  useEffect(() => {
+    const updateFullscreenState = () => {
+      setPlayerFullscreen(document.fullscreenElement === videoContainerRef.current);
+    };
+
+    document.addEventListener('fullscreenchange', updateFullscreenState);
+    return () => document.removeEventListener('fullscreenchange', updateFullscreenState);
+  }, []);
+
+  const toggleWatchplayFullscreen = async () => {
+    const videoContainer = videoContainerRef.current;
+    if (!videoContainer) return;
+
+    setFullscreenError('');
+
+    try {
+      if (document.fullscreenElement === videoContainer) {
+        await document.exitFullscreen();
+      } else if (videoContainer.requestFullscreen) {
+        await videoContainer.requestFullscreen();
+      } else {
+        setFullscreenError('Este navegador nao permite ativar tela cheia por este botao.');
+      }
+    } catch (error) {
+      console.error('Falha ao alternar tela cheia do Watchplay:', error);
+      setFullscreenError('Nao foi possivel ativar tela cheia. Tente novamente.');
+    }
+  };
 
   useEffect(() => {
     if (!showNoSourceHint) {
@@ -371,7 +404,7 @@ export function PlayerPage({
         <div className="player-main">
           {/* Video Player */}
           <div className="player-wrapper">
-            <div className="video-container">
+            <div className="video-container" ref={videoContainerRef}>
               <iframe
                 src={playerUrl}
                 allowFullScreen
@@ -383,7 +416,22 @@ export function PlayerPage({
                   console.error('Player error:', e);
                 }}
               />
+              {isWatchplay && (
+                <button
+                  type="button"
+                  className="watchplay-fullscreen-btn"
+                  onClick={toggleWatchplayFullscreen}
+                  aria-label={playerFullscreen ? 'Sair da tela cheia' : 'Ativar tela cheia'}
+                >
+                  {playerFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
+                </button>
+              )}
             </div>
+            {isWatchplay && fullscreenError && (
+              <p className="watchplay-fullscreen-error" role="alert">
+                {fullscreenError}
+              </p>
+            )}
 
             {/* Player Info */}
             <div className="player-info">
