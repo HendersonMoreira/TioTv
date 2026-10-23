@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { getPosterUrlBySize, getTitle } from '../services/api';
+import { isComingSoon, getPosterUrlBySize, getTitle } from '../services/api';
 import type { MediaItem } from '../types';
 import { ChevronLeft, ChevronRight } from './icons';
 
@@ -34,7 +34,7 @@ export function Top10Row({ title, items, mediaType = 'tv', onPlayItem }: Top10Ro
             >
               <span className="top10-number">{index + 1}</span>
               <div className="top10-poster">
-                <img src={getPosterUrlBySize(item.poster_path, 'w342', index)} alt={getTitle(item)} decoding="async" />
+                <img src={getPosterUrlBySize(item.poster_path, 'w342', index)} alt={getTitle(item)} decoding="async" />{isComingSoon(item) && <span className="soon-ribbon">Em Breve no Brasil</span>}
               </div>
             </article>
           ))}

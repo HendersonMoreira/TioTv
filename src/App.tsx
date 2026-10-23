@@ -6,6 +6,8 @@ import {
   getTitle,
   loadCatalog,
   loadCatalogPage,
+  loadBrazilUpcomingMovies,
+  getTodayIso,
   loadMovieGenres,
   loadUpcomingEpisodeReleases,
   loadUpcomingReleases,
@@ -993,13 +995,22 @@ function App() {
     const loadAll = async () => {
       try {
         setLoading(true);
-        const [filmes, terror, familia, animes, series] = await Promise.all([
+        const [filmesRaw, terrorRaw, familiaRaw, animes, series, brUpcoming] = await Promise.all([
           loadCatalog('filmes'),
           loadCatalog('filmes', 1, 'terror'),
           loadCatalog('filmes', 1, 'familia'),
           loadCatalog('animes'),
           loadCatalog('series'),
+          loadBrazilUpcomingMovies().catch(() => [] as MediaItem[]),
         ]);
+
+        const todayBr = getTodayIso();
+        const upcomingIds = new Set(brUpcoming.map((entry) => entry.id));
+        const markSoon = (list: MediaItem[]) =>
+          list.map((entry) => (upcomingIds.has(entry.id) || (entry.release_date || '') > todayBr ? { ...entry, coming_soon: true } : entry));
+        const filmes = markSoon(filmesRaw);
+        const terror = markSoon(terrorRaw);
+        const familia = markSoon(familiaRaw);
 
         if (!isMounted) return;
         const taggedFilmes = tagCatalogItems(filmes, 'movie');

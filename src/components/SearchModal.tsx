@@ -1,4 +1,4 @@
-import { getPosterUrl, getPosterUrlBySize, getTitle, getYear } from '../services/api';
+import { isComingSoon, getPosterUrl, getPosterUrlBySize, getTitle, getYear } from '../services/api';
 import type { MediaItem } from '../types';
 
 type SearchModalProps = {
@@ -36,6 +36,7 @@ export function SearchModal({ searchQuery, searchResults, onSearchChange, onSele
                   }
                 }}
               >
+                {isComingSoon(item) && <span className="soon-ribbon">Em Breve no Brasil</span>}
                 <img
                   src={getPosterUrl(item.poster_path)}
                   srcSet={`${getPosterUrlBySize(item.poster_path, 'w185')} 185w, ${getPosterUrlBySize(item.poster_path, 'w342')} 342w`}

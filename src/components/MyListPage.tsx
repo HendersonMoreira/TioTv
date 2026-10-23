@@ -1,4 +1,4 @@
-import { getPosterUrl, getPosterUrlBySize, getTitle, getYear } from '../services/api';
+import { isComingSoon, getPosterUrl, getPosterUrlBySize, getTitle, getYear } from '../services/api';
 import type { MediaItem } from '../types';
 import { ChevronLeft, GearIcon } from './icons';
 
@@ -70,6 +70,7 @@ export function MyListPage({
             role="button"
             tabIndex={0}
           >
+            {isComingSoon(item) && <span className="soon-ribbon">Em Breve no Brasil</span>}
             <img
               src={getPosterUrl(item.poster_path, index)}
               srcSet={`${getPosterUrlBySize(item.poster_path, 'w342', index)} 342w, ${getPosterUrlBySize(item.poster_path, 'w500', index)} 500w`}

@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { getBackdropUrlBySize, getTitle, getYear } from '../services/api';
+import { isComingSoon, getBackdropUrlBySize, getTitle, getYear } from '../services/api';
 import type { MediaItem, MovieGenre } from '../types';
 import { ChevronRight } from './icons';
 
@@ -53,7 +53,7 @@ function PanelTrack({ row, genres, onPlayItem, isItemLocked }: Omit<PanelRowsPro
                   alt={getTitle(item)}
                   decoding="async"
                 />
-                {locked && <span className="panel-badge">Premium</span>}<div className="panel-hover"><strong>{getTitle(item)}</strong><span className="panel-play">▶ Assistir agora</span><small>{getYear(item)}{genreText(item) ? ' · ' + genreText(item) : ''}</small></div>
+                {isComingSoon(item) && <span className="soon-ribbon">Em Breve no Brasil</span>}{locked && <span className="panel-badge">Premium</span>}<div className="panel-hover"><strong>{getTitle(item)}</strong><span className="panel-play">▶ Assistir agora</span><small>{getYear(item)}{genreText(item) ? ' · ' + genreText(item) : ''}</small></div>
               </div>
               <h4>{getTitle(item)}</h4>
               <span>{genreText(item)}</span>

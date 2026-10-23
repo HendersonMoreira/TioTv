@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import Glider from 'glider-js';
 import 'glider-js/glider.min.css';
-import { getPosterUrl, getPosterUrlBySize, getTitle, getYear } from '../services/api';
+import { isComingSoon, getPosterUrl, getPosterUrlBySize, getTitle, getYear } from '../services/api';
 import type { MediaItem } from '../types';
 import { ChevronLeft, ChevronRight, HeartIcon } from './icons';
 
@@ -114,6 +114,7 @@ export function ContentRow({
                   decoding="async"
                 />
 
+                {isComingSoon(item) && <span className="soon-ribbon">Em Breve no Brasil</span>}
                 {onRemoveItem && (
                   <button
                     className="remove-row-item-btn"

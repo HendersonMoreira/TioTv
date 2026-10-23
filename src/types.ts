@@ -13,6 +13,7 @@ export interface MediaItem {
   genre_ids?: number[];
   media_type?: 'movie' | 'tv';
   content_type?: 'movie' | 'tv' | 'anime';
+  coming_soon?: boolean;
 }
 
 export interface MovieGenre {

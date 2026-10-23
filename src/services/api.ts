@@ -99,6 +99,14 @@ function buildCatalogUrl(type: CatalogType, page: number, genre?: string, genreI
   return `${TMDB_BASE}/discover/tv?api_key=${key}&language=pt-BR&without_genres=16&page=${page}`;
 }
 
+let brUpcomingIdsPromise: Promise<Set<number>> | null = null;
+
+export function isComingSoon(item: MediaItem): boolean {
+  if (item.coming_soon) return true;
+  const date = item.release_date || item.first_air_date || '';
+  return date.length >= 10 && date > getTodayIso();
+}
+
 export async function loadCatalogPage(
   type: CatalogType,
   page = 1,
@@ -118,7 +126,12 @@ export async function loadCatalogPage(
   }
 
   const data = (await response.json()) as TMDBListResponse;
-  const items = (Array.isArray(data.results) ? data.results : []).slice(0, 20);
+  let items = (Array.isArray(data.results) ? data.results : []).slice(0, 20);
+  if (type === 'filmes') {
+    brUpcomingIdsPromise ??= loadBrazilUpcomingMovies().then((list) => new Set(list.map((entry) => entry.id)), () => new Set<number>());
+    const soonIds = await brUpcomingIdsPromise;
+    items = items.map((entry) => (soonIds.has(entry.id) ? { ...entry, coming_soon: true } : entry));
+  }
   const totalPagesRaw = Math.min(Number(data.total_pages ?? 1), MAX_PAGES);
   const totalPages = Number.isFinite(totalPagesRaw) && totalPagesRaw > 0 ? Math.floor(totalPagesRaw) : 1;
   const hasMore = page < totalPages && items.length > 0;
@@ -521,4 +534,41 @@ export async function loadTrailerKey(id: number, type: 'movie' | 'tv' | 'anime')
   }
   trailerCache.set(cacheKey, result);
   return result;
+}
+export function getTodayIso(): string {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+  return parts;
+}
+
+export async function loadBrazilUpcomingMovies(): Promise<MediaItem[]> {
+  if (!TMDB_API_KEY) return [];
+  const key = encodeURIComponent(TMDB_API_KEY);
+  const tomorrowDate = new Date(`${getTodayIso()}T12:00:00-03:00`);
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+  const today = tomorrowDate.toISOString().slice(0, 10);
+  const end = new Date();
+  end.setFullYear(end.getFullYear() + 1);
+  const to = end.toISOString().slice(0, 10);
+  const back = new Date();
+  back.setFullYear(back.getFullYear() - 1);
+  const oldestOriginal = back.toISOString().slice(0, 10);
+
+  const urls = [1, 2, 3].map(
+    (page) =>
+      `${TMDB_BASE}/discover/movie?api_key=${key}&language=pt-BR&region=BR&with_release_type=2|3&sort_by=popularity.desc&include_adult=false&release_date.gte=${today}&release_date.lte=${to}&page=${page}`,
+  );
+
+  const pages = await Promise.all(
+    urls.map((url) =>
+      fetch(url, { cache: 'no-store' })
+        .then(async (res) => (res.ok ? (((await res.json()) as TMDBListResponse).results as TMDBReleaseItem[]) || [] : []))
+        .catch(() => [] as TMDBReleaseItem[]),
+    ),
+  );
+
+  return pages
+    .flat()
+    .filter((item, index, arr) => index === arr.findIndex((ref) => ref.id === item.id))
+    .filter((item) => (item.release_date || '') >= oldestOriginal)
+    .map((item) => mapReleaseItem(item, 'movie'));
 }

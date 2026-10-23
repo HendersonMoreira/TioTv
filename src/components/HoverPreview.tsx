@@ -1,6 +1,6 @@
-﻿import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { getBackdropUrlBySize, getTitle, getYear, loadTrailerKey } from '../services/api';
+import { isComingSoon, getBackdropUrlBySize, getTitle, getYear, loadTrailerKey } from '../services/api';
 import type { MediaItem, MovieGenre } from '../types';
 
 type MediaKind = 'movie' | 'tv' | 'anime';
@@ -162,7 +162,7 @@ export function HoverPreviewHost({ items, genres, favorites, onToggleFavorite, o
             {muted ? '🔇 Sem som' : '🔊 Com som'}
           </button>
         )}
-        {isLocked?.(item, type) && <span className="hover-preview-tag">Premium</span>}
+        {isComingSoon(item) && <span className="soon-ribbon">Em Breve no Brasil</span>}{isLocked?.(item, type) && <span className="hover-preview-tag">Premium</span>}
       </div>
       <div className="hover-preview-body">
         <h4>{getTitle(item)}</h4>
