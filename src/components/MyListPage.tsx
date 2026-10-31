@@ -13,6 +13,8 @@ export interface MyListEntry {
   completed: boolean;
   updatedAt: string;
   item: MediaItem;
+  positionSec?: number;
+  durationSec?: number;
 }
 
 interface MyListPageProps {
@@ -26,6 +28,22 @@ interface MyListPageProps {
   onOpenSettings?: () => void;
   onLogout?: () => void;
   isItemLocked?: (item: MediaItem, type: MediaKind) => boolean;
+}
+
+function formatMovieTime(sec: number): string {
+  const total = Math.max(0, Math.round(sec));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}min`;
+  return m > 0 ? `${m}min` : `${total}s`;
+}
+
+function formatEpisodeTime(sec: number): string {
+  const total = Math.max(0, Math.round(sec));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  if (m === 0) return `${s}s`;
+  return s > 0 ? `${m}min ${String(s).padStart(2, '0')}s` : `${m}min`;
 }
 
 const TYPE_LABELS: Record<MediaKind, string> = {
@@ -50,6 +68,8 @@ export function MyListPage({
     (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
   );
   const inProgress = sorted.filter((entry) => !entry.completed);
+  const seriesInProgress = inProgress.filter((entry) => entry.type !== 'movie');
+  const moviesInProgress = inProgress.filter((entry) => entry.type === 'movie');
   const watched = sorted.filter((entry) => entry.completed);
 
   const renderGrid = (list: MyListEntry[]) => (
@@ -61,6 +81,17 @@ export function MyListPage({
           entry.type === 'movie' || !entry.season || !entry.episode
             ? TYPE_LABELS[entry.type]
             : `T${entry.season} · Ep ${entry.episode}`;
+        const hasTime = !entry.completed && typeof entry.positionSec === 'number' && entry.positionSec > 0;
+        const timeText = entry.completed
+          ? 'Concluido'
+          : entry.type === 'movie'
+            ? hasTime
+              ? `Parou em ${formatMovieTime(entry.positionSec as number)}${entry.durationSec ? ' de ' + formatMovieTime(entry.durationSec) : ''}`
+              : 'Assistindo agora'
+            : hasTime
+              ? `Parou na temporada ${entry.season ?? 1}, ep ${entry.episode ?? 1} · ${formatEpisodeTime(entry.positionSec as number)}`
+              : `Parou na temporada ${entry.season ?? 1}, ep ${entry.episode ?? 1}`;
+        const percent = hasTime && entry.durationSec ? Math.min(100, Math.round(((entry.positionSec as number) / entry.durationSec) * 100)) : 0;
 
         return (
           <article
@@ -97,7 +128,9 @@ export function MyListPage({
               <span>
                 {progress} · {getYear(item)}
               </span>
+              <small className="mylist-time">{timeText}</small>
             </div>
+            {percent > 0 && <div className="mylist-bar"><span style={{ width: `${percent}%` }} /></div>}
             {isLocked && <span className="premium-lock-badge">Premium</span>}
           </article>
         );
@@ -145,15 +178,21 @@ export function MyListPage({
         </div>
       ) : (
         <>
-          {inProgress.length > 0 && (
+          {seriesInProgress.length > 0 && (
             <section className="mylist-section">
-              <h3>Em andamento</h3>
-              {renderGrid(inProgress)}
+              <h3>Series que estou vendo</h3>
+              {renderGrid(seriesInProgress)}
+            </section>
+          )}
+          {moviesInProgress.length > 0 && (
+            <section className="mylist-section">
+              <h3>Filmes que estou vendo</h3>
+              {renderGrid(moviesInProgress)}
             </section>
           )}
           {watched.length > 0 && (
             <section className="mylist-section">
-              <h3>Ja assistidos</h3>
+              <h3>Ja terminei de assistir</h3>
               {renderGrid(watched)}
             </section>
           )}

@@ -77,7 +77,6 @@ type TMDBReleaseItem = {
   genre_ids?: number[];
 };
 
-const ADULT_SEARCH_TERMS = ['hentai', 'porn', 'erotic', 'ecchi'];
 
 function buildCatalogUrl(type: CatalogType, page: number, genre?: string, genreId?: number, includeAdult = false): string {
   const key = encodeURIComponent(TMDB_API_KEY);
@@ -225,53 +224,33 @@ export async function loadUpcomingReleases(daysAhead = 5): Promise<MediaItem[]> 
   });
 }
 
-async function searchAdultMoviesByLanguage(page: number, language: string): Promise<CatalogPageResult> {
-  const key = encodeURIComponent(TMDB_API_KEY);
-
-  const requests = ADULT_SEARCH_TERMS.map((term) => {
-    const url =
-      `${TMDB_BASE}/search/movie?api_key=${key}` +
-      `&language=${encodeURIComponent(language)}` +
-      `&query=${encodeURIComponent(term)}` +
-      `&include_adult=true&page=${page}`;
-    return fetch(url, { cache: 'no-store' })
-      .then(async (response) => {
-        if (!response.ok) {
-          return { results: [] as MediaItem[], total_pages: 1 };
-        }
-        const data = (await response.json()) as TMDBListResponse;
-        return {
-          results: Array.isArray(data.results) ? data.results : [],
-          total_pages: Number(data.total_pages ?? 1),
-        };
-      })
-      .catch(() => ({ results: [] as MediaItem[], total_pages: 1 }));
-  });
-
-  const responses = await Promise.all(requests);
-  const merged = responses.flatMap((entry) => entry.results);
-  const unique = merged.filter((item, index, arr) => index === arr.findIndex((ref) => ref.id === item.id));
-  const totalPagesRaw = Math.min(
-    Math.max(...responses.map((entry) => (Number.isFinite(entry.total_pages) ? entry.total_pages : 1)), 1),
-    MAX_PAGES,
-  );
-  const totalPages = Number.isFinite(totalPagesRaw) && totalPagesRaw > 0 ? Math.floor(totalPagesRaw) : 1;
-  const hasMore = page < totalPages && unique.length > 0;
-
-  return {
-    items: unique.slice(0, 30),
-    hasMore,
-    totalPages,
-  };
-}
+const HENTAI_KEYWORD_ID = 198385;
 
 export async function loadAdultCatalogPage(page = 1): Promise<CatalogPageResult> {
-  const pt = await searchAdultMoviesByLanguage(page, 'pt-BR');
-  if (pt.items.length > 0) {
-    return pt;
-  }
+  const key = encodeURIComponent(TMDB_API_KEY);
+  const fetchKind = async (kind: 'tv' | 'movie') => {
+    const url =
+      `${TMDB_BASE}/discover/${kind}?api_key=${key}&language=pt-BR&with_genres=16` +
+      `&with_keywords=${HENTAI_KEYWORD_ID}&include_adult=true&sort_by=popularity.desc&page=${page}`;
+    try {
+      const response = await fetch(url, { cache: 'no-store' });
+      if (!response.ok) return { items: [] as MediaItem[], pages: 1 };
+      const data = (await response.json()) as TMDBListResponse;
+      const list = Array.isArray(data.results) ? (data.results as TMDBReleaseItem[]) : [];
+      return {
+        items: list.map((item) => ({ ...mapReleaseItem(item, kind === 'tv' ? 'anime' : 'movie'), adult: true })),
+        pages: Number(data.total_pages ?? 1),
+      };
+    } catch {
+      return { items: [] as MediaItem[], pages: 1 };
+    }
+  };
 
-  return searchAdultMoviesByLanguage(page, 'en-US');
+  const [tv, movie] = await Promise.all([fetchKind('tv'), fetchKind('movie')]);
+  const items = [...tv.items, ...movie.items].filter((item) => item.poster_path);
+  const totalPages = Math.min(Math.max(tv.pages, movie.pages, 1), MAX_PAGES);
+
+  return { items, hasMore: page < totalPages, totalPages };
 }
 
 export async function loadMovieGenres(): Promise<MovieGenre[]> {
@@ -571,4 +550,15 @@ export async function loadBrazilUpcomingMovies(): Promise<MediaItem[]> {
     .filter((item, index, arr) => index === arr.findIndex((ref) => ref.id === item.id))
     .filter((item) => (item.release_date || '') >= oldestOriginal)
     .map((item) => mapReleaseItem(item, 'movie'));
+}
+export async function loadMovieRuntimeSeconds(id: number): Promise<number | null> {
+  if (!TMDB_API_KEY) return null;
+  try {
+    const res = await fetch(`${TMDB_BASE}/movie/${id}?api_key=${encodeURIComponent(TMDB_API_KEY)}&language=pt-BR`);
+    if (!res.ok) return null;
+    const data = (await res.json()) as { runtime?: number };
+    return data.runtime ? data.runtime * 60 : null;
+  } catch {
+    return null;
+  }
 }

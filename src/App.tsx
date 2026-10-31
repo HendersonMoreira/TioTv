@@ -6,6 +6,7 @@ import {
   getTitle,
   loadCatalog,
   loadCatalogPage,
+  loadAdultCatalogPage,
   loadBrazilUpcomingMovies,
   getTodayIso,
   loadMovieGenres,
@@ -88,6 +89,8 @@ type WatchHistoryEntry = {
   completed: boolean;
   updatedAt: string;
   item: MediaItem;
+  positionSec?: number;
+  durationSec?: number;
 };
 
 const getWatchHistoryStorageKey = (uid: string) => `${WATCH_HISTORY_STORAGE_KEY}:${uid}`;
@@ -266,38 +269,9 @@ const ADULT_CONTENT_PHRASE_TERMS = [
   'sem censura',
 ];
 
-const STRICT_ADULT_HIGH_CONFIDENCE_TOKENS = new Set([
-  'porn',
-  'porno',
-  'pornografia',
-  'hentai',
-  'ecchi',
-  'doujin',
-  'yaoi',
-  'yuri',
-  'nsfw',
-]);
+const ADULT_FORCED_TITLE_TERMS = ['hentai', 'porn', 'porno', 'xxx', 'nsfw'];
 
-const ADULT_FORCED_TITLE_TERMS = [
-  'overflow',
-  'high school dxd',
-  'highschool dxd',
-  'boku no pico',
-  'redo of healer',
-  'kaiyari',
-  'harem in the labyrinth',
-  'futoku no guild',
-  'shoujo ramune',
-];
-
-const ADULT_TITLE_EXCEPTIONS = [
-  'euphoria',
-  'lei & ordem: unidade de vitimas especiais',
-  'law & order: special victims unit',
-  'shameless',
-  'the tonight show com jimmy fallon',
-  'the tonight show starring jimmy fallon',
-];
+const ADULT_TITLE_EXCEPTIONS: string[] = [];
 
 const isAdultContentItem = (item: MediaItem): boolean => {
   if (item.adult) {
@@ -326,48 +300,10 @@ const isAdultContentItem = (item: MediaItem): boolean => {
   return ADULT_CONTENT_TERMS.some((term) => text.includes(term));
 };
 
-const isStrictAdultAreaItem = (item: MediaItem): boolean => {
-  if (item.adult) {
-    return true;
-  }
-
-  const title = normalizeText(`${item.title || ''} ${item.name || ''}`);
-  if (ADULT_TITLE_EXCEPTIONS.some((term) => title.includes(term))) {
-    return false;
-  }
-
-  if (ADULT_FORCED_TITLE_TERMS.some((term) => title.includes(term))) {
-    return true;
-  }
-
-  const text = normalizeText(`${item.title || ''} ${item.name || ''} ${item.overview || ''}`);
-  const hasPhraseSignal = ADULT_CONTENT_PHRASE_TERMS.some((term) => text.includes(term));
-  const textTokens = text.split(/[^a-z0-9]+/).filter(Boolean);
-
-  const matchedTokens = ADULT_CONTENT_TOKEN_TERMS.filter((term) => textTokens.includes(term));
-  const hasHighConfidenceToken = matchedTokens.some((token) => STRICT_ADULT_HIGH_CONFIDENCE_TOKENS.has(token));
-
-  if (hasHighConfidenceToken) {
-    return true;
-  }
-
-  if (hasPhraseSignal && matchedTokens.length >= 1) {
-    return true;
-  }
-
-  return matchedTokens.length >= 2;
-};
-
 const sanitizeCatalogItems = (items: MediaItem[]): MediaItem[] => items.filter((item) => !isAdultContentItem(item));
 
 const tagCatalogItems = (items: MediaItem[], type: 'movie' | 'tv' | 'anime'): MediaItem[] =>
   items.map((item) => ({ ...item, content_type: type }));
-
-const dedupeByTypeAndId = (items: MediaItem[]): MediaItem[] =>
-  items.filter((item, index, arr) => {
-    const mediaType = item.content_type || item.media_type || 'movie';
-    return index === arr.findIndex((ref) => ref.id === item.id && (ref.content_type || ref.media_type || 'movie') === mediaType);
-  });
 
 const isKidsSafeItem = (item: MediaItem): boolean => {
   const text = normalizeText(`${item.title || ''} ${item.name || ''} ${item.overview || ''}`);
@@ -685,7 +621,6 @@ function App() {
   const [categoryItems, setCategoryItems] = useState<MediaItem[]>([]);
   const [categoryLoading, setCategoryLoading] = useState(false);
   const [categoryError, setCategoryError] = useState<string | null>(null);
-  const [adultCatalogPool, setAdultCatalogPool] = useState<MediaItem[]>([]);
   const [categoryPage, setCategoryPage] = useState(1);
   const [categoryTotalPages, setCategoryTotalPages] = useState(1);
   const [playerContent, setPlayerContent] = useState<{
@@ -1019,18 +954,7 @@ function App() {
         const taggedAnimes = tagCatalogItems(animes, 'anime');
         const taggedSeries = tagCatalogItems(series, 'tv');
 
-        const adultPool = dedupeByTypeAndId(
-          [
-            ...taggedFilmes,
-            ...taggedTerror,
-            ...taggedFamilia,
-            ...taggedAnimes,
-            ...taggedSeries,
-          ].filter(isStrictAdultAreaItem),
-        );
-
-        setAdultCatalogPool(adultPool);
-        setCatalog({
+       setCatalog({
           filmes: sanitizeCatalogItems(taggedFilmes),
           terror: sanitizeCatalogItems(taggedTerror),
           familia: sanitizeCatalogItems(taggedFamilia),
@@ -1147,6 +1071,14 @@ function App() {
           <p className="release-notification-subtitle">Aviso automático para até 15 dias</p>
         </div>
         <span className="release-notification-pill">{upcomingNotificationCount}</span>
+        <button
+          type="button"
+          className="release-notification-close"
+          aria-label="Fechar"
+          onClick={() => setUpcomingNotificationsOpen(false)}
+        >
+          ✕
+        </button>
       </div>
 
       {upcomingNotifications.length > 0 ? (
@@ -1314,17 +1246,10 @@ function App() {
         setCategoryLoading(true);
 
         if (currentCategory === 'adulto') {
-          const pageSize = 20;
-          const totalAdultPages = Math.max(1, Math.ceil(adultCatalogPool.length / pageSize));
-          const normalizedPage = Math.min(Math.max(categoryPage, 1), totalAdultPages);
-          if (normalizedPage !== categoryPage) {
-            setCategoryPage(normalizedPage);
-          }
-          const start = (normalizedPage - 1) * pageSize;
-          const end = start + pageSize;
-
-          setCategoryItems(adultCatalogPool.slice(start, end));
-          setCategoryTotalPages(totalAdultPages);
+          const adultData = await loadAdultCatalogPage(categoryPage);
+          if (!isMounted) return;
+          setCategoryItems(adultData.items);
+          setCategoryTotalPages(Math.min(Math.max(adultData.totalPages, 1), MAX_CATEGORY_PAGES));
           setCategoryError(null);
           return;
         }
@@ -1346,17 +1271,6 @@ function App() {
           ...item,
           content_type: categoryContentType,
         }));
-        const adultFromCategory = taggedCategoryItems.filter(isStrictAdultAreaItem);
-        if (adultFromCategory.length > 0) {
-          setAdultCatalogPool((prev) => {
-            const merged = dedupeByTypeAndId([...prev, ...adultFromCategory]);
-            if (merged.length === prev.length) {
-              return prev;
-            }
-            return merged;
-          });
-        }
-
         setCategoryItems(sanitizeCatalogItems(taggedCategoryItems));
         const safeTotalPages = Math.min(Math.max(data.totalPages, 1), MAX_CATEGORY_PAGES);
         setCategoryTotalPages(safeTotalPages);
@@ -1376,7 +1290,7 @@ function App() {
     return () => {
       isMounted = false;
     };
-  }, [currentCategory, currentGenreId, categoryPage, adultCatalogPool]);
+  }, [currentCategory, currentGenreId, categoryPage]);
 
   const goToCategoryPage = (page: number) => {
     if (categoryLoading) return;
@@ -1739,6 +1653,8 @@ function App() {
     completed: boolean;
     updatedAt: string;
     item: PlayerContent;
+    positionSec?: number;
+    durationSec?: number;
   }) => {
     if (!authUser?.uid) {
       return;
@@ -1746,8 +1662,12 @@ function App() {
 
     setWatchHistory((prev) => {
       const key = `${progress.type}:${progress.contentId}`;
+      const previous = prev.find((entry) => entry.key === key);
+      const sameEpisode = previous && previous.season === progress.season && previous.episode === progress.episode;
       const nextEntry: WatchHistoryEntry = {
         key,
+        positionSec: progress.positionSec ?? (sameEpisode ? previous?.positionSec : undefined),
+        durationSec: progress.durationSec ?? (sameEpisode ? previous?.durationSec : undefined),
         type: progress.type,
         contentId: progress.contentId,
         season: progress.season,

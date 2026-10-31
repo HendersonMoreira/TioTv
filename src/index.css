@@ -2832,3 +2832,112 @@ body {
 .search-result-item { position: relative; }
 .search-result-item .soon-ribbon { top: 4px; font-size: 8px; padding: 2px 5px; }
 .category-grid .movie-card, .kids-grid .movie-card { position: relative; }
+
+.mylist-time { display: block; position: relative; z-index: 3; margin-top: 4px; font-size: 12px; font-weight: 600; color: #ffd21f; }
+.mylist-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(255,255,255,.2); z-index: 3; }
+.mylist-bar span { display: block; height: 100%; background: #7b61ff; }
+
+.mylist-grid .card-meta .mylist-time { display: block; margin-top: 6px; font-size: 0.78rem; font-weight: 700; color: #ffd21f; }
+
+.mylist-grid .movie-card, .app-shell .mylist-grid .movie-card { aspect-ratio: auto; height: auto; overflow: hidden; text-align: left; }
+.mylist-grid .card-meta { position: relative; inset: auto; }
+.mylist-bar { position: static; margin: 0 12px 12px; border-radius: 4px; overflow: hidden; }
+
+/* ===== Responsivo: celular, tablet e TV ===== */
+html, body { max-width: 100%; overflow-x: clip; }
+img, video { max-width: 100%; }
+
+/* Rodape: regras antigas de 5 colunas anulavam as media queries */
+@media (max-width: 1100px) {
+  .site-footer .site-footer-grid { grid-template-columns: 1.4fr 1fr 1.4fr; gap: 28px 24px; }
+  .site-footer .site-footer-grid > div:nth-child(n+4) { min-width: 0; }
+  .site-footer .site-footer-brand { margin-bottom: 24px; }
+}
+@media (max-width: 760px) {
+  .site-footer .site-footer-grid { grid-template-columns: 1fr 1fr; gap: 28px 18px; padding: 34px 5% 26px; }
+  .site-footer .site-footer-grid > .sf-brand-col, .site-footer .site-footer-grid > .sf-genres { grid-column: 1 / -1; }
+  .site-footer .site-footer-brand { font-size: 1.7rem; margin-bottom: 16px; }
+  .sf-social { margin-bottom: 22px; }
+  .site-footer .site-footer-bottom { padding: 18px 5%; gap: 14px; font-size: 0.8rem; }
+}
+
+/* Painel de notificacoes: fixo na tela para nao sair pela esquerda */
+@media (max-width: 640px) {
+  .release-notification-wrap { position: static; }
+  .release-notification-popover {
+    position: fixed; top: 64px; left: 10px; right: 10px; width: auto;
+    max-height: calc(100vh - 84px); overflow: auto; padding: 12px;
+  }
+  .release-notification-list { max-height: calc(100vh - 190px); }
+  .release-notification-item { grid-template-columns: 40px minmax(0, 1fr); }
+  .release-notification-item > :last-child { grid-column: 2; justify-self: start; }
+  .release-notification-meta strong { overflow-wrap: anywhere; }
+}
+
+/* Menu: no celular vira uma faixa rolavel em vez de sumir */
+@media (max-width: 768px) {
+  .app-shell .main-nav, .main-nav {
+    display: flex; width: 100%; justify-content: flex-start; flex-wrap: nowrap;
+    overflow-x: auto; scrollbar-width: none; gap: 18px; padding: 4px 2px;
+  }
+  .main-nav::-webkit-scrollbar { display: none; }
+  .main-nav > * { flex: 0 0 auto; white-space: nowrap; }
+  .top-nav { gap: 10px; padding-left: 4%; padding-right: 4%; }
+  .nav-actions { flex-wrap: wrap; row-gap: 8px; }
+  .hero-content { padding-left: 4%; padding-right: 4%; }
+  .topic-card { flex: 0 0 min(260px, 78vw); }
+  .top10-card { flex-basis: 230px; height: 200px; }
+  .top10-number { font-size: 8rem; margin-right: -20px; }
+  .top10-poster { width: 135px; }
+  .catalog-layout { padding-left: 4%; padding-right: 4%; }
+  .app-shell .content-row { padding: 16px 14px; border-radius: 18px; }
+  .mylist-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px; }
+  .mylist-header-top { flex-wrap: wrap; }
+  .hover-preview { display: none; }
+}
+
+@media (max-width: 420px) {
+  .hero-actions { flex-wrap: wrap; }
+  .hero-play-btn, .hero-info-btn { padding: 12px 18px; font-size: 0.92rem; }
+  .panel-card { flex-basis: 200px; }
+  .top10-card { flex-basis: 200px; height: 180px; }
+  .top10-number { font-size: 6.8rem; }
+  .top10-poster { width: 118px; }
+  .nav-actions .user-chip { display: none; }
+}
+
+/* Tablet */
+@media (min-width: 769px) and (max-width: 1100px) {
+  .top-nav { flex-wrap: wrap; }
+  .main-nav { gap: 14px; }
+  .panel-row { grid-template-columns: 150px minmax(0, 1fr); }
+  .panel-card { flex-basis: 250px; }
+  .mylist-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+}
+
+/* TV / telas muito grandes */
+@media (min-width: 1700px) {
+  html { font-size: 18px; }
+  .catalog-layout, .site-footer .site-footer-grid, .site-footer .site-footer-bottom { max-width: 2200px; margin-left: auto; margin-right: auto; }
+}@media (max-width: 768px) { .main-nav { margin: 0; } }
+
+/* Grades de categoria, genero, kids e minha lista */
+@media (max-width: 600px) {
+  .category-grid, .kids-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .category-page-topbar { gap: 10px; }
+  .category-pagination, .kids-pagination { justify-content: center; }
+}
+@media (min-width: 601px) and (max-width: 1100px) {
+  .category-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+}
+@media (min-width: 1700px) {
+  .category-grid { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 20px; }
+  .kids-grid { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 18px; }
+}
+.release-notification-close { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; flex: none; margin-left: 8px; border: 0; border-radius: 50%; background: rgba(255,255,255,.1); color: #fff; font-size: 16px; line-height: 1; cursor: pointer; transition: background .2s, transform .2s; }
+.release-notification-close:hover { background: #7b61ff; transform: scale(1.08); }
+.release-notification-header { align-items: center; }
+@media (max-width: 640px) {
+  .release-notification-popover { z-index: 1000; }
+  .release-notification-header { position: sticky; top: 0; z-index: 2; background: inherit; }
+}

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Episode, PlayerContent } from '../types';
+import { loadMovieRuntimeSeconds } from '../services/api';
 import { ChevronLeft, ChevronRight, GearIcon } from './icons';
 import '../styles/player.css';
 
@@ -19,46 +20,36 @@ type PlayerPageProps = {
     completed: boolean;
     updatedAt: string;
     item: PlayerContent;
+    positionSec?: number;
+    durationSec?: number;
   }) => void;
 };
 
-const EMBED_PROVIDERS = {
-  movie: (id: number) => `https://vidsrc.to/embed/movie/${id}`,
-  tv: (id: number, season: number, episode: number) =>
-    `https://vidsrc.to/embed/tv/${id}/${season}/${episode}`,
-  anime: (id: number, season: number, episode: number) =>
-    `https://vidsrc.to/embed/tv/${id}/${season}/${episode}`,
-};
+function readTimeFromMessage(raw: unknown): { position: number; duration?: number } | null {
+  let data: unknown = raw;
+  if (typeof raw === 'string') {
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  if (!data || typeof data !== 'object') return null;
+  const obj = data as Record<string, unknown>;
+  const inner = (obj.data && typeof obj.data === 'object' ? obj.data : obj) as Record<string, unknown>;
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+  const progress = (inner.progress && typeof inner.progress === 'object' ? inner.progress : {}) as Record<string, unknown>;
+  const position =
+    num(inner.currentTime) ?? num(inner.current_time) ?? num(inner.time) ?? num(inner.position) ??
+    num(inner.timestamp) ?? num(progress.watched);
+  if (position === undefined) return null;
+  return { position, duration: num(inner.duration) ?? num(inner.totalTime) ?? num(progress.duration) };
+}
 
-const PLAYER_SERVER_KEY = 'tiotv_player_server_v1';
-
-type PlayerServer = 'vidsrc' | 'myembed';
-
-type ServerOption = {
-  value: PlayerServer;
-  label: string;
-};
-
-const SERVER_OPTIONS: ServerOption[] = [
-  { value: 'vidsrc', label: 'Vidsrc (Padrao)' },
-  { value: 'myembed', label: 'MyEmbed (PT-BR)' },
-];
-
-const SERVER_EMBED_BUILDERS: Record<PlayerServer, {
-  movie: (id: number, season: number, episode: number) => string;
-  tv: (id: number, season: number, episode: number) => string;
-  anime: (id: number, season: number, episode: number) => string;
-}> = {
-  vidsrc: {
-    movie: (id: number) => EMBED_PROVIDERS.movie(id),
-    tv: (id: number, season: number, episode: number) => EMBED_PROVIDERS.tv(id, season, episode),
-    anime: (id: number, season: number, episode: number) => EMBED_PROVIDERS.anime(id, season, episode),
-  },
-  myembed: {
-    movie: (id: number) => `https://myembed.biz/filme/${id}`,
-    tv: (id: number, season: number, episode: number) => `https://myembed.biz/serie/${id}/${season}/${episode}`,
-    anime: (id: number, season: number, episode: number) => `https://myembed.biz/serie/${id}/${season}/${episode}`,
-  },
+const MYEMBED_BUILDERS = {
+  movie: (id: number) => `https://myembed.biz/filme/${id}`,
+  tv: (id: number, season: number, episode: number) => `https://myembed.biz/serie/${id}/${season}/${episode}`,
+  anime: (id: number, season: number, episode: number) => `https://myembed.biz/serie/${id}/${season}/${episode}`,
 };
 
 const PLAYER_PROGRESS_KEY_PREFIX = 'tiotv_player_progress_v1';
@@ -83,13 +74,6 @@ export function PlayerPage({
   onLogout,
   onProgressChange,
 }: PlayerPageProps) {
-  const [selectedServer, setSelectedServer] = useState<PlayerServer>(() => {
-    const saved = window.localStorage.getItem(PLAYER_SERVER_KEY);
-    if (saved === 'vidsrc' || saved === 'myembed') {
-      return saved;
-    }
-    return 'vidsrc';
-  });
   const [currentSeason, setCurrentSeason] = useState(1);
   const [currentEpisode, setCurrentEpisode] = useState(1);
   const [showEpisodeList, setShowEpisodeList] = useState(false);
@@ -100,6 +84,10 @@ export function PlayerPage({
   const [playerFullscreen, setPlayerFullscreen] = useState(false);
   const [fullscreenError, setFullscreenError] = useState('');
   const videoContainerRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const timeRef = useRef<{ position: number; duration?: number; real: boolean }>({ position: 0, real: false });
+  const progressBase = useRef<{ season?: number; episode?: number; completed: boolean }>({ completed: false });
+  const [movieRuntime, setMovieRuntime] = useState<number | null>(null);
 
   const episodes = useMemo(() => {
     if (!content.episodes || type === 'movie') {
@@ -133,12 +121,73 @@ export function PlayerPage({
     (ep) => ep.episode === currentEpisode,
   );
 
-  const playerUrl = SERVER_EMBED_BUILDERS[selectedServer][type](
+  const playerUrl = MYEMBED_BUILDERS[type](
     contentId,
     currentSeason,
     currentEpisode,
   );
-  const isWatchplay = selectedServer === 'myembed';
+  const isWatchplay = true;
+
+  useEffect(() => {
+    setMovieRuntime(null);
+    if (type !== 'movie') return;
+    let active = true;
+    loadMovieRuntimeSeconds(contentId).then((sec) => { if (active) setMovieRuntime(sec); });
+    return () => { active = false; };
+  }, [type, contentId]);
+
+  // O tempo real vem do player via postMessage; se ele nao enviar, conta o tempo com o video aberto
+  useEffect(() => {
+    timeRef.current = { position: 0, real: false };
+
+    const onMessage = (event: MessageEvent) => {
+      if (event.source !== iframeRef.current?.contentWindow) return;
+      const parsed = readTimeFromMessage(event.data);
+      if (!parsed) return;
+      timeRef.current = { position: parsed.position, duration: parsed.duration ?? timeRef.current.duration, real: true };
+    };
+
+    const tick = window.setInterval(() => {
+      if (timeRef.current.real || document.hidden) return;
+      timeRef.current.position += 1;
+    }, 1000);
+
+    window.addEventListener('message', onMessage);
+    return () => {
+      window.removeEventListener('message', onMessage);
+      window.clearInterval(tick);
+    };
+  }, [playerUrl]);
+
+  const flushProgress = () => {
+    if (!onProgressChange) return;
+    const real = timeRef.current.real;
+    const pos = timeRef.current.position;
+    const dur = timeRef.current.duration ?? (type === 'movie' ? movieRuntime ?? undefined : undefined);
+    const watchedMost = real && dur ? pos >= dur * 0.9 : false;
+    const base = progressBase.current;
+    onProgressChange({
+      type,
+      contentId,
+      season: base.season,
+      episode: base.episode,
+      completed: type === 'movie' ? watchedMost : base.completed && (dur && real ? watchedMost : true),
+      updatedAt: new Date().toISOString(),
+      item: content,
+      positionSec: real && pos > 5 ? Math.round(pos) : undefined,
+      durationSec: dur ? Math.round(dur) : undefined,
+    });
+  };
+  const flushRef = useRef(flushProgress);
+  flushRef.current = flushProgress;
+
+  useEffect(() => {
+    const id = window.setInterval(() => flushRef.current(), 5000);
+    return () => {
+      window.clearInterval(id);
+      flushRef.current();
+    };
+  }, [playerUrl]);
 
   const seasons = useMemo(() => Object.keys(episodes).map(Number).sort((a, b) => a - b), [episodes]);
 
@@ -200,10 +249,6 @@ export function PlayerPage({
   }, [showNoSourceHint]);
 
   useEffect(() => {
-    window.localStorage.setItem(PLAYER_SERVER_KEY, selectedServer);
-  }, [selectedServer]);
-
-  useEffect(() => {
     if (type === 'movie' || resumeChecked || seasons.length === 0) {
       return;
     }
@@ -259,7 +304,7 @@ export function PlayerPage({
       onProgressChange({
         type,
         contentId,
-        completed: true,
+        completed: false,
         updatedAt,
         item: content,
       });
@@ -274,6 +319,7 @@ export function PlayerPage({
     const lastSeasonEpisodes = episodes[lastSeason] || [];
     const lastEpisodeNumber = lastSeasonEpisodes[lastSeasonEpisodes.length - 1]?.episode;
     const completed = currentSeason === lastSeason && currentEpisode === lastEpisodeNumber;
+    progressBase.current = { season: currentSeason, episode: currentEpisode, completed };
 
     onProgressChange({
       type,
@@ -406,6 +452,7 @@ export function PlayerPage({
           <div className="player-wrapper">
             <div className="video-container" ref={videoContainerRef}>
               <iframe
+                ref={iframeRef}
                 src={playerUrl}
                 allowFullScreen
                 sandbox="allow-same-origin allow-scripts allow-forms allow-presentation"
@@ -439,20 +486,6 @@ export function PlayerPage({
                 <div>
                   <div className="player-title-row">
                     <h3 className="player-title">{title}</h3>
-                    <label className="server-select-wrap">
-                      <span>Escolha o servidor</span>
-                      <select
-                        value={selectedServer}
-                        onChange={(e) => setSelectedServer(e.target.value as PlayerServer)}
-                        aria-label="Escolha o servidor de reproducao"
-                      >
-                        {SERVER_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
                   </div>
                   {type !== 'movie' && (
                     <p className="episode-label">
