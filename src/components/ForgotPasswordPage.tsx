@@ -21,11 +21,6 @@ const getResetCodeFromUrl = (): string | null => {
   return match ? decodeURIComponent(match[1]) : null;
 };
 
-const getContinueUrl = (): string => {
-  const { origin, pathname } = window.location;
-  return `${origin}${pathname}?from=reset#/esqueci-senha`;
-};
-
 export function ForgotPasswordPage({ onBackToLogin }: ForgotPasswordPageProps) {
   const [email, setEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -77,8 +72,8 @@ export function ForgotPasswordPage({ onBackToLogin }: ForgotPasswordPageProps) {
     setMessage(null);
 
     try {
-      await requestPasswordReset(email.trim(), getContinueUrl());
-      setMessage('Enviamos um link para o seu email. Abra o email e volte aqui para concluir a troca de senha.');
+      await requestPasswordReset(email.trim());
+      setMessage('Enviamos um link para o seu email. Abra o link para criar uma nova senha e depois volte para entrar.');
     } catch (err) {
       setError(getAuthErrorMessage(err));
     } finally {

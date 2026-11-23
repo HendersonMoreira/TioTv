@@ -146,6 +146,7 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
   'auth/operation-not-allowed': 'Alteracao de e-mail nao permitida no Firebase. Verifique se o login por email e senha esta habilitado.',
   'auth/api-key-not-valid': 'Configuracao do Firebase invalida. Verifique a chave publica do frontend.',
   'auth/network-request-failed': 'Falha de rede ao falar com o Firebase. Verifique sua conexao.',
+  'auth/unauthorized-continue-uri': 'O dominio de retorno nao esta autorizado no Firebase. Contate o administrador do site.',
   'auth/weak-password': 'A senha precisa ter no minimo 6 caracteres.',
   'auth/too-many-requests': 'Muitas tentativas. Tente novamente em alguns minutos.',
   'auth/session-limit-exceeded': 'Muitas pessoas estao usando esta conta. Desconecte de outros dispositivos para continuar.',
@@ -448,11 +449,8 @@ export const updateUserPassword = async (currentPassword: string, newPassword: s
   await updatePassword(user, newPassword);
 };
 
-export const requestPasswordReset = async (email: string, continueUrl: string): Promise<void> => {
-  await sendPasswordResetEmail(auth, email, {
-    url: continueUrl,
-    handleCodeInApp: true,
-  });
+export const requestPasswordReset = async (email: string): Promise<void> => {
+  await sendPasswordResetEmail(auth, email);
 };
 
 export const verifyPasswordResetLink = async (oobCode: string): Promise<string> => {
