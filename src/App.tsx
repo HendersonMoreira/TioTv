@@ -23,6 +23,8 @@ import { KidsPageView } from './components/KidsPageView';
 import { ForgotPasswordPage } from './components/ForgotPasswordPage';
 import { LoginModal } from './components/LoginModal';
 import { PlayerPage } from './components/PlayerPage';
+import { MediaDetailsPage } from './components/MediaDetailsPage';
+import { UserAvatar } from './components/UserAvatar';
 import { RegisterModal } from './components/RegisterModal';
 import { SearchModal } from './components/SearchModal';
 import { AccountSettingsPage } from './components/AccountSettingsPage';
@@ -33,7 +35,7 @@ import { AnimeFeature } from './components/AnimeFeature';
 import { Top10Row } from './components/Top10Row';
 import { PanelRows } from './components/PanelRows';
 import { MyListPage, type MyListEntry } from './components/MyListPage';
-import { logout, startAuthSessionTracking, subscribeToAuth, type AuthUser } from './services/auth';
+import { getCurrentAuthUser, logout, startAuthSessionTracking, subscribeToAuth, type AuthUser } from './services/auth';
 import { doc, onSnapshot, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from './services/firebase';
 
@@ -131,6 +133,13 @@ const isSettingsHash = (): boolean => window.location.hash.startsWith('#/configu
 const isUpdatesHash = (): boolean => window.location.hash === '#/atualizacoes';
 const isMyListHash = (): boolean => window.location.hash === '#/minha-lista';
 const isForgotPasswordHash = (): boolean => window.location.hash === '#/esqueci-senha';
+const parseDetailsFromHash = (): { id: number; type: 'movie' | 'tv' | 'anime' } | null => {
+  const match = window.location.hash.match(/^#\/info\/(movie|tv|anime)\/([1-9]\d*)$/);
+  if (!match) return null;
+  const id = Number(match[2]);
+  if (!Number.isSafeInteger(id)) return null;
+  return { type: match[1] as 'movie' | 'tv' | 'anime', id };
+};
 const normalizeText = (value: string): string =>
   value
     .normalize('NFD')
@@ -608,6 +617,9 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState<boolean>(() => isSettingsHash());
   const [updatesOpen, setUpdatesOpen] = useState<boolean>(() => isUpdatesHash());
   const [myListOpen, setMyListOpen] = useState<boolean>(() => isMyListHash());
+  const [detailsRoute, setDetailsRoute] = useState(parseDetailsFromHash);
+  const detailsOrigin = useRef('');
+  const detailsInitialItem = useRef<{ item: MediaItem; type: 'movie' | 'tv' | 'anime' } | undefined>(undefined);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [isPremiumUser, setIsPremiumUser] = useState(false);
   const [, setIsPremiumPlusUser] = useState(false);
@@ -844,6 +856,7 @@ function App() {
       setSettingsOpen(isSettingsHash());
       setUpdatesOpen(isUpdatesHash());
       setMyListOpen(isMyListHash());
+      setDetailsRoute(parseDetailsFromHash());
       setGenresOpen(false);
     };
 
@@ -1518,7 +1531,7 @@ function App() {
   const openLoginModal = () => {
     setRegisterOpen(false);
     setRegisterContextMessage(null);
-    window.location.hash = '';
+    if (!detailsRoute) window.location.hash = '';
     setLoginOpen(true);
   };
 
@@ -1551,7 +1564,7 @@ function App() {
   };
 
   const onUserUpdated = () => {
-    // subscribeToAuth vai disparar e atualizar authUser automaticamente
+    setAuthUser(getCurrentAuthUser());
   };
 
   const openSettingsPage = () => {
@@ -1560,6 +1573,13 @@ function App() {
 
   const openPremiumCheckoutPage = () => {
     window.location.hash = '#/configuracoes?secao=plano';
+  };
+
+  const openMediaDetails = (item: MediaItem, type: 'movie' | 'tv' | 'anime') => {
+    detailsOrigin.current = window.location.hash;
+    detailsInitialItem.current = { item, type };
+    window.location.hash = `#/info/${type}/${item.id}`;
+    window.scrollTo({ top: 0 });
   };
 
   const playContent = async (item: MediaItem, mediaType: 'movie' | 'tv' | 'anime') => {
@@ -1721,10 +1741,61 @@ function App() {
         content={playerContent.data}
         onBack={closePlayer}
         currentUserName={userFirstName}
+        currentUserPhotoURL={authUser?.photoURL}
         onOpenSettings={openSettingsPage}
         onLogout={handleLogout}
         onProgressChange={handlePlayerProgressChange}
       />
+    );
+  }
+
+  if (detailsRoute) {
+    const initialItem = detailsInitialItem.current?.item.id === detailsRoute.id
+      && detailsInitialItem.current.type === detailsRoute.type
+      ? detailsInitialItem.current.item
+      : undefined;
+    return (
+      <>
+        <MediaDetailsPage
+          key={`${detailsRoute.type}:${detailsRoute.id}`}
+          id={detailsRoute.id}
+          type={detailsRoute.type}
+          initialItem={initialItem}
+          isFavorite={favorites.includes(detailsRoute.id)}
+          onBack={() => { window.location.hash = detailsOrigin.current; }}
+          onPlay={playContent}
+          onToggleFavorite={toggleFavorite}
+        />
+        <RegisterModal
+          open={registerOpen}
+          contextMessage={registerContextMessage}
+          onClose={closeRegisterModal}
+          onLogin={openLoginModal}
+          onSuccess={onAuthSuccess}
+        />
+        <LoginModal
+          open={loginOpen}
+          onClose={() => setLoginOpen(false)}
+          onRegister={() => openRegisterModal()}
+          onForgotPassword={openForgotPasswordPage}
+          onSuccess={onAuthSuccess}
+        />
+        {premiumUpsellOpen && (
+          <div className="premium-upsell-overlay" onClick={() => setPremiumUpsellOpen(false)}>
+            <div className="premium-upsell-modal" onClick={(event) => event.stopPropagation()}>
+              <h3>Conteudo Premium</h3>
+              <p>{premiumUpsellMessage}</p>
+              <div className="premium-upsell-actions">
+                <button type="button" className="ghost-account-btn" onClick={() => setPremiumUpsellOpen(false)}>Agora nao</button>
+                <button type="button" className="account-btn" onClick={() => {
+                  setPremiumUpsellOpen(false);
+                  openPremiumCheckoutPage();
+                }}>Quero ser Premium</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </>
     );
   }
 
@@ -1754,6 +1825,7 @@ function App() {
           onSearchChange={handleSearch}
           onSelectSearchItem={handleSearchItemSelect}
           currentUserName={userFirstName}
+          currentUserPhotoURL={authUser?.photoURL}
           onOpenSettings={openSettingsPage}
           onLogout={handleLogout}
           isItemLocked={isItemPremiumLocked}
@@ -1798,6 +1870,7 @@ function App() {
           onPlayItem={playContent}
           onRemove={removeFromMyList}
           currentUserName={authUser ? userFirstName : undefined}
+          currentUserPhotoURL={authUser?.photoURL}
           onOpenSettings={openSettingsPage}
           onLogout={handleLogout}
           isItemLocked={isItemPremiumLocked}
@@ -1827,6 +1900,7 @@ function App() {
           onToggleFavorite={toggleFavorite}
           onPlayItem={playContent}
           currentUserName={userFirstName}
+          currentUserPhotoURL={authUser?.photoURL}
           onOpenSettings={openSettingsPage}
           onLogout={handleLogout}
           isItemLocked={isItemPremiumLocked}
@@ -1939,9 +2013,7 @@ function App() {
             </button>
             {authUser ? (
               <>
-                <span className="user-chip">
-                  Ola, {userFirstName}
-                </span>
+                <UserAvatar name={userFirstName || 'Usuario'} photoURL={authUser.photoURL} />
                 <button
                   className="gear-btn circle-btn"
                   aria-label="Configuracoes do perfil"
@@ -2107,9 +2179,7 @@ function App() {
             </button>
             {authUser ? (
               <>
-                <span className="user-chip">
-                  Ola, {userFirstName}
-                </span>
+                <UserAvatar name={userFirstName || 'Usuario'} photoURL={authUser.photoURL} />
                 <button
                   className="gear-btn circle-btn"
                   aria-label="Configuracoes do perfil"
@@ -2245,7 +2315,7 @@ function App() {
               className="hero-info-btn"
               onClick={() => {
                 if (!currentHero) return;
-                void playContent(currentHero, 'movie');
+                openMediaDetails(currentHero, 'movie');
               }}
             >
               Mais info
@@ -2338,6 +2408,7 @@ function App() {
             favorites={favorites}
             onToggleFavorite={toggleFavorite}
             onPlayItem={playContent}
+            onMoreInfo={openMediaDetails}
             onViewAll={() => openCategoryPage('animes')}
           />
         )}
@@ -2349,6 +2420,7 @@ function App() {
         favorites={favorites}
         onToggleFavorite={toggleFavorite}
         onPlay={playContent}
+        onMoreInfo={openMediaDetails}
         isLocked={isItemPremiumLocked}
       />
 

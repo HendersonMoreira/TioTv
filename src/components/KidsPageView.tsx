@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { isComingSoon, getPosterUrl, getPosterUrlBySize, getTitle, getYear } from '../services/api';
 import type { MediaItem } from '../types';
+import { UserAvatar } from './UserAvatar';
 import { ChevronLeft, GearIcon, HeartIcon } from './icons';
 
 interface KidsPageViewProps {
@@ -11,6 +12,7 @@ interface KidsPageViewProps {
   onToggleFavorite: (id: number) => void;
   onPlayItem?: (item: MediaItem, type: 'movie' | 'tv' | 'anime') => void;
   currentUserName?: string;
+  currentUserPhotoURL?: string | null;
   onOpenSettings?: () => void;
   onLogout?: () => void;
   isItemLocked?: (item: MediaItem, type: 'movie' | 'tv' | 'anime') => boolean;
@@ -24,6 +26,7 @@ export function KidsPageView({
   onToggleFavorite,
   onPlayItem,
   currentUserName,
+  currentUserPhotoURL,
   onOpenSettings,
   onLogout,
   isItemLocked,
@@ -89,7 +92,7 @@ export function KidsPageView({
 
           {currentUserName && (
             <div className="nav-actions">
-              <span className="user-chip">Ola, {currentUserName}</span>
+              <UserAvatar name={currentUserName} photoURL={currentUserPhotoURL} />
               <button
                 className="gear-btn circle-btn"
                 aria-label="Configuracoes do perfil"

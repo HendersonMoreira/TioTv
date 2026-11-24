@@ -11,6 +11,7 @@ interface HoverPreviewHostProps {
   favorites: number[];
   onToggleFavorite: (id: number) => void;
   onPlay: (item: MediaItem, type: MediaKind) => void;
+  onMoreInfo: (item: MediaItem, type: MediaKind) => void;
   isLocked?: (item: MediaItem, type: MediaKind) => boolean;
 }
 
@@ -20,7 +21,7 @@ const SHOW_DELAY = 550;
 const HIDE_DELAY = 180;
 const POPUP_WIDTH = 400;
 
-export function HoverPreviewHost({ items, genres, favorites, onToggleFavorite, onPlay, isLocked }: HoverPreviewHostProps) {
+export function HoverPreviewHost({ items, genres, favorites, onToggleFavorite, onPlay, onMoreInfo, isLocked }: HoverPreviewHostProps) {
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const showTimer = useRef<number | null>(null);
   const hideTimer = useRef<number | null>(null);
@@ -171,7 +172,7 @@ export function HoverPreviewHost({ items, genres, favorites, onToggleFavorite, o
           <button type="button" className="hp-ghost" onClick={() => onToggleFavorite(item.id)}>
             {isFavorite ? 'Na lista ♥' : 'Favoritar ♡'}
           </button>
-          <button type="button" className="hp-ghost" onClick={() => { close(); onPlay(item, type); }}>Detalhes ⓘ</button>
+          <button type="button" className="hp-ghost" onClick={() => { close(); onMoreInfo(item, type); }}>Detalhes ⓘ</button>
         </div>
         <div className="hover-preview-meta">
           <span>{getYear(item)}</span>

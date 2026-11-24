@@ -1,6 +1,7 @@
 import { isComingSoon, getPosterUrl, getPosterUrlBySize, getTitle, getYear } from '../services/api';
 import type { MediaItem } from '../types';
 import { SearchModal } from './SearchModal';
+import { UserAvatar } from './UserAvatar';
 import { ChevronLeft, GearIcon, HeartIcon, SearchIcon } from './icons';
 
 type CategoryPageViewProps = {
@@ -22,6 +23,7 @@ type CategoryPageViewProps = {
   onSearchChange: (query: string) => void | Promise<void>;
   onSelectSearchItem?: (item: MediaItem) => void;
   currentUserName?: string;
+  currentUserPhotoURL?: string | null;
   onOpenSettings?: () => void;
   onLogout?: () => void;
   isItemLocked?: (item: MediaItem, type: 'movie' | 'tv' | 'anime') => boolean;
@@ -46,6 +48,7 @@ export function CategoryPageView({
   onSearchChange,
   onSelectSearchItem,
   currentUserName,
+  currentUserPhotoURL,
   onOpenSettings,
   onLogout,
   isItemLocked,
@@ -108,7 +111,7 @@ export function CategoryPageView({
 
             {currentUserName && (
               <>
-                <span className="user-chip">Ola, {currentUserName}</span>
+                <UserAvatar name={currentUserName} photoURL={currentUserPhotoURL} />
                 <button
                   className="gear-btn circle-btn"
                   aria-label="Configuracoes do perfil"

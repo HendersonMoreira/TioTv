@@ -1,5 +1,6 @@
 import { isComingSoon, getPosterUrl, getPosterUrlBySize, getTitle, getYear } from '../services/api';
 import type { MediaItem } from '../types';
+import { UserAvatar } from './UserAvatar';
 import { ChevronLeft, GearIcon } from './icons';
 
 type MediaKind = 'movie' | 'tv' | 'anime';
@@ -25,6 +26,7 @@ interface MyListPageProps {
   onPlayItem: (item: MediaItem, type: MediaKind) => void;
   onRemove: (entry: MyListEntry) => void;
   currentUserName?: string;
+  currentUserPhotoURL?: string | null;
   onOpenSettings?: () => void;
   onLogout?: () => void;
   isItemLocked?: (item: MediaItem, type: MediaKind) => boolean;
@@ -60,6 +62,7 @@ export function MyListPage({
   onPlayItem,
   onRemove,
   currentUserName,
+  currentUserPhotoURL,
   onOpenSettings,
   onLogout,
   isItemLocked,
@@ -149,7 +152,7 @@ export function MyListPage({
 
           {currentUserName && (
             <div className="nav-actions">
-              <span className="user-chip">Ola, {currentUserName}</span>
+              <UserAvatar name={currentUserName} photoURL={currentUserPhotoURL} />
               <button
                 className="gear-btn circle-btn"
                 aria-label="Configuracoes do perfil"

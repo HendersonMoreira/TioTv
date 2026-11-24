@@ -1859,6 +1859,63 @@ a {
   flex-shrink: 0;
 }
 
+.user-avatar {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  overflow: hidden;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #7b61ff, #a64fe2);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.user-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.acc-avatar-edit {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+
+.acc-avatar-edit .user-avatar {
+  width: 52px;
+  height: 52px;
+  font-size: 1.3rem;
+}
+
+.acc-avatar-camera {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  display: grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  border: 2px solid #111420;
+  border-radius: 50%;
+  background: #7b61ff;
+}
+
+.acc-avatar-camera svg { width: 13px; height: 13px; fill: #fff; }
+.acc-avatar-edit:focus-visible { outline: 2px solid #fff; outline-offset: 4px; }
+.acc-photo-form { margin: 0 0 20px; }
+.acc-photo-help { margin: 8px 0 0; color: #aaaebf; font-size: .82rem; line-height: 1.5; }
+.acc-photo-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.acc-photo-remove { padding: 10px 12px; border: 0; background: transparent; color: #d3cbff; cursor: pointer; }
+.acc-photo-remove:disabled { opacity: .5; cursor: not-allowed; }
+
 .acc-user-name {
   margin: 0 0 3px;
   font-size: 1rem;

@@ -52,6 +52,26 @@ export const getYear = (item: MediaItem): string => {
   return raw.slice(0, 4);
 };
 
+export type MediaDetails = MediaItem & {
+  genres?: MovieGenre[];
+  vote_average?: number;
+  vote_count?: number;
+  runtime?: number;
+  number_of_seasons?: number;
+  number_of_episodes?: number;
+};
+
+export async function loadMediaDetails(id: number, type: 'movie' | 'tv' | 'anime'): Promise<MediaDetails> {
+  const kind = type === 'movie' ? 'movie' : 'tv';
+  const url = `${TMDB_BASE}/${kind}/${id}?api_key=${encodeURIComponent(TMDB_API_KEY)}&language=pt-BR`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Nao foi possivel carregar as informacoes (${response.status}).`);
+  }
+  const data = (await response.json()) as MediaDetails;
+  return { ...data, content_type: type };
+}
+
 type TMDBListResponse = {
   page?: number;
   total_pages?: number;

@@ -9,10 +9,11 @@ interface AnimeFeatureProps {
   favorites: number[];
   onToggleFavorite: (id: number) => void;
   onPlayItem: (item: MediaItem, type: 'movie' | 'tv' | 'anime') => void;
+  onMoreInfo: (item: MediaItem, type: 'movie' | 'tv' | 'anime') => void;
   onViewAll: () => void;
 }
 
-export function AnimeFeature({ title, items, genres, favorites, onToggleFavorite, onPlayItem, onViewAll }: AnimeFeatureProps) {
+export function AnimeFeature({ title, items, genres, favorites, onToggleFavorite, onPlayItem, onMoreInfo, onViewAll }: AnimeFeatureProps) {
   const list = items.filter((item) => item.backdrop_path).slice(0, 8);
   const [index, setIndex] = useState(0);
 
@@ -65,7 +66,7 @@ export function AnimeFeature({ title, items, genres, favorites, onToggleFavorite
           {overview && <p>{overview}</p>}
           <div className="anime-feature-actions">
             <button type="button" className="af-play" onClick={() => onPlayItem(item, 'anime')}>Assistir agora ▶</button>
-            <button type="button" className="af-ghost" onClick={() => onPlayItem(item, 'anime')}>Mais info</button>
+            <button type="button" className="af-ghost" onClick={() => onMoreInfo(item, 'anime')}>Mais info</button>
             <button
               type="button"
               className="af-ghost af-plus"

@@ -121,6 +121,7 @@ export type AuthUser = {
   uid: string;
   email: string | null;
   displayName: string | null;
+  photoURL: string | null;
 };
 
 const toAuthUser = (user: User | null): AuthUser | null => {
@@ -130,8 +131,11 @@ const toAuthUser = (user: User | null): AuthUser | null => {
     uid: user.uid,
     email: user.email,
     displayName: user.displayName,
+    photoURL: user.photoURL,
   };
 };
+
+export const getCurrentAuthUser = (): AuthUser | null => toAuthUser(auth.currentUser);
 
 const AUTH_ERROR_MESSAGES: Record<string, string> = {
   'auth/email-already-in-use': 'Este email ja esta em uso.',
@@ -422,6 +426,12 @@ export const updateUserName = async (newName: string): Promise<void> => {
   const trimmed = newName.trim();
   await updateProfile(user, { displayName: trimmed });
   await setDoc(doc(db, 'Users', user.uid), { nome: trimmed, updatedAt: serverTimestamp() }, { merge: true });
+};
+
+export const updateUserPhoto = async (photoURL: string | null): Promise<void> => {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Nao autenticado.');
+  await updateProfile(user, { photoURL });
 };
 
 export const updateUserEmail = async (currentPassword: string, newEmail: string): Promise<void> => {

@@ -1,0 +1,142 @@
+.media-details-page {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  background: #00031c;
+  color: #fff;
+}
+
+.media-details-backdrop {
+  position: absolute;
+  inset: 0 0 auto;
+  height: min(78vh, 760px);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.media-details-backdrop img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+}
+
+.media-details-backdrop::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(0, 3, 28, .96), rgba(0, 3, 28, .5)),
+    linear-gradient(0deg, #00031c, transparent 80%);
+}
+
+.media-details-inner {
+  position: relative;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 32px clamp(20px, 5vw, 72px) 100px;
+}
+
+.media-details-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 17px;
+  border: 1px solid rgba(255, 255, 255, .16);
+  border-radius: 999px;
+  background: rgba(15, 17, 44, .8);
+  color: #fff;
+  cursor: pointer;
+}
+
+.media-details-back svg { width: 18px; height: 18px; fill: currentColor; }
+.media-details-back:hover { background: #292443; }
+
+.media-details-layout {
+  display: grid;
+  grid-template-columns: minmax(180px, 270px) minmax(0, 750px);
+  align-items: start;
+  gap: clamp(28px, 5vw, 70px);
+  margin-top: clamp(65px, 12vh, 120px);
+}
+
+.media-details-poster img, .media-details-poster-fallback {
+  display: block;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  border-radius: 14px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .45);
+  object-fit: cover;
+}
+
+.media-details-poster-fallback {
+  display: grid;
+  place-items: center;
+  background: #151832;
+  color: #aaaec5;
+  text-align: center;
+}
+
+.media-details-eyebrow {
+  color: #a998ff;
+  font-size: .82rem;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.media-details-content h1 {
+  margin: 12px 0 18px;
+  font-size: clamp(2.2rem, 5vw, 4.5rem);
+  line-height: 1.08;
+  overflow-wrap: anywhere;
+}
+
+.media-details-meta, .media-details-genres, .media-details-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.media-details-meta { color: #d3d4df; font-size: .95rem; }
+.media-details-meta span + span::before { content: '·'; margin-right: 10px; color: #85869b; }
+.media-details-rating { color: #ffd35a; font-weight: 700; }
+.media-details-genres { margin-top: 20px; }
+.media-details-genres span { padding: 6px 12px; border: 1px solid #49445f; border-radius: 999px; color: #e0deec; font-size: .83rem; }
+.media-details-soon { display: inline-block; margin-top: 16px; padding: 6px 12px; border-radius: 5px; background: #ffd21f; color: #181300; font-weight: 700; font-size: .8rem; }
+.media-details-synopsis { max-width: 680px; margin-top: 30px; }
+.media-details-synopsis h2 { margin: 0 0 10px; font-size: 1.15rem; }
+.media-details-synopsis p { margin: 0; color: #d0d1dc; font-size: 1rem; line-height: 1.7; }
+.media-details-actions { margin-top: 30px; }
+.media-details-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 12px 20px;
+  border: 0;
+  border-radius: 8px;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform .2s, background .2s;
+}
+.media-details-actions button:hover { transform: translateY(-2px); }
+.media-details-play { background: linear-gradient(110deg, #7b61ff, #a64fe2); }
+.media-details-favorite { background: rgba(255, 255, 255, .13); }
+.media-details-favorite:hover { background: rgba(255, 255, 255, .24); }
+.media-details-favorite svg { width: 19px; height: 19px; fill: currentColor; }
+.media-details-status, .media-details-loading { color: #d0d1dc; }
+.media-details-status { margin-top: 24px; }
+.media-details-status button { color: #c1b4ff; background: none; border: 0; text-decoration: underline; cursor: pointer; }
+.media-details-loading { font-size: .85rem; }
+
+@media (max-width: 600px) {
+  .media-details-inner { padding: 20px 20px 60px; }
+  .media-details-backdrop { height: 440px; }
+  .media-details-layout { grid-template-columns: 1fr; gap: 24px; margin-top: 50px; }
+  .media-details-poster { width: min(42vw, 180px); }
+  .media-details-content h1 { font-size: clamp(2rem, 9vw, 3rem); }
+  .media-details-actions button { flex: 1 1 210px; }
+}

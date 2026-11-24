@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Episode, PlayerContent } from '../types';
 import { loadMovieRuntimeSeconds } from '../services/api';
 import { ChevronLeft, ChevronRight, GearIcon } from './icons';
+import { UserAvatar } from './UserAvatar';
 import '../styles/player.css';
 
 type PlayerPageProps = {
@@ -10,6 +11,7 @@ type PlayerPageProps = {
   content: PlayerContent;
   onBack: () => void;
   currentUserName?: string;
+  currentUserPhotoURL?: string | null;
   onOpenSettings?: () => void;
   onLogout?: () => void;
   onProgressChange?: (progress: {
@@ -70,6 +72,7 @@ export function PlayerPage({
   content,
   onBack,
   currentUserName,
+  currentUserPhotoURL,
   onOpenSettings,
   onLogout,
   onProgressChange,
@@ -432,7 +435,7 @@ export function PlayerPage({
 
         {currentUserName && (
           <div className="nav-actions">
-            <span className="user-chip">Ola, {currentUserName}</span>
+            <UserAvatar name={currentUserName} photoURL={currentUserPhotoURL} />
             <button
               className="gear-btn circle-btn"
               aria-label="Configuracoes do perfil"

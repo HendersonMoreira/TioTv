@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
-import { CheckIcon, GearIcon } from './icons';
+import { CameraIcon, CheckIcon, GearIcon } from './icons';
+import { UserAvatar } from './UserAvatar';
 import { createPagBankCheckout, createPagBankPixCheckout, verifyPagBankPayment } from '../services/payments';
 import {
   getAuthErrorMessage,
   updateUserEmail,
   updateUserName,
   updateUserPassword,
+  updateUserPhoto,
   type AuthUser,
 } from '../services/auth';
 
@@ -44,6 +46,9 @@ export function AccountSettingsPage({ user, isPremium, premiumExpiresAt, onBack,
   // Nome
   const [nome, setNome] = useState(user.displayName ?? '');
   const [nomeState, setNomeState] = useState<FieldState>(IDLE);
+  const [photoEditorOpen, setPhotoEditorOpen] = useState(false);
+  const [photoURL, setPhotoURL] = useState(user.photoURL ?? '');
+  const [photoState, setPhotoState] = useState<FieldState>(IDLE);
 
   // Email
   const [newEmail, setNewEmail] = useState('');
@@ -222,6 +227,56 @@ export function AccountSettingsPage({ user, isPremium, premiumExpiresAt, onBack,
     } catch (err) {
       setNomeState({ submitting: false, error: getAuthErrorMessage(err), success: false });
     }
+  };
+
+  const savePhoto = async (url: string | null) => {
+    setPhotoState({ submitting: true, error: null, success: false });
+    try {
+      if (url) {
+        let parsed: URL;
+        try {
+          parsed = new URL(url);
+        } catch {
+          throw new Error('Informe um link válido para a imagem.');
+        }
+        if (parsed.protocol !== 'https:' || parsed.username || parsed.password || url.length > 2048) {
+          throw new Error('Use um link HTTPS válido, sem usuário ou senha.');
+        }
+        await new Promise<void>((resolve, reject) => {
+          const image = new Image();
+          const timer = window.setTimeout(() => {
+            image.onload = null;
+            image.onerror = null;
+            reject(new Error('A imagem demorou para carregar. Verifique o link e tente novamente.'));
+          }, 10000);
+          image.onload = () => { window.clearTimeout(timer); resolve(); };
+          image.onerror = () => {
+            window.clearTimeout(timer);
+            reject(new Error('Não foi possível carregar a imagem. Use um link direto e público.'));
+          };
+          image.referrerPolicy = 'no-referrer';
+          image.src = url;
+        });
+      }
+      await updateUserPhoto(url);
+      setPhotoURL(url ?? '');
+      setPhotoState({ submitting: false, error: null, success: true });
+      setPhotoEditorOpen(false);
+      onUserUpdated();
+    } catch (err) {
+      const message = err instanceof Error && !('code' in err) ? err.message : getAuthErrorMessage(err);
+      setPhotoState({ submitting: false, error: message, success: false });
+    }
+  };
+
+  const handlePhoto = (event: React.FormEvent) => {
+    event.preventDefault();
+    const url = photoURL.trim();
+    if (!url) {
+      setPhotoState({ submitting: false, error: 'Informe o link da imagem.', success: false });
+      return;
+    }
+    void savePhoto(url);
   };
 
   const handleEmail = async (e: React.FormEvent) => {
@@ -412,9 +467,7 @@ export function AccountSettingsPage({ user, isPremium, premiumExpiresAt, onBack,
         </button>
         <span className="acc-brand">TioTV</span>
         <div className="nav-actions">
-          <span className="user-chip">
-            Ola, {(user.displayName || user.email || 'Usuario').split(' ')[0]}
-          </span>
+          <UserAvatar name={user.displayName || user.email || 'Usuario'} photoURL={user.photoURL} />
           <button
             className="gear-btn circle-btn"
             aria-label="Pagina de configuracoes"
@@ -455,18 +508,60 @@ export function AccountSettingsPage({ user, isPremium, premiumExpiresAt, onBack,
           {section === 'preferencias' && (
             <div className="acc-section">
               <h2 className="acc-section-title">Preferências</h2>
-              <p className="acc-section-desc">Atualize seu nome de exibição.</p>
+              <p className="acc-section-desc">Atualize seu nome de exibição e sua foto de perfil.</p>
 
               <div className="acc-card">
                 <div className="acc-card-info">
-                  <div className="acc-avatar">
-                    {(user.displayName ?? user.email ?? 'U')[0].toUpperCase()}
-                  </div>
+                  <button
+                    type="button"
+                    className="acc-avatar-edit"
+                    aria-label="Alterar foto de perfil"
+                    aria-expanded={photoEditorOpen}
+                    disabled={photoState.submitting}
+                    onClick={() => {
+                      setPhotoURL(user.photoURL ?? '');
+                      setPhotoState(IDLE);
+                      setPhotoEditorOpen((open) => !open);
+                    }}
+                  >
+                    <UserAvatar name={user.displayName || user.email || 'Usuario'} photoURL={user.photoURL} />
+                    <span className="acc-avatar-camera"><CameraIcon /></span>
+                  </button>
                   <div>
                     <p className="acc-user-name">{user.displayName || 'Sem nome'}</p>
                     <p className="acc-user-email">{user.email}</p>
                   </div>
                 </div>
+
+                {photoEditorOpen && (
+                  <form className="acc-form acc-photo-form" onSubmit={handlePhoto}>
+                    <div className="acc-field">
+                      <label htmlFor="acc-photo-url">Link da foto</label>
+                      <input
+                        id="acc-photo-url"
+                        type="url"
+                        value={photoURL}
+                        onChange={(event) => { setPhotoURL(event.target.value); setPhotoState(IDLE); }}
+                        placeholder="https://exemplo.com/foto.jpg"
+                        required
+                        disabled={photoState.submitting}
+                      />
+                      <p className="acc-photo-help">Cole um link HTTPS direto e público para uma imagem. A foto continua hospedada no site de origem.</p>
+                    </div>
+                    {photoState.error && <p className="acc-error" role="alert">{photoState.error}</p>}
+                    <div className="acc-photo-actions">
+                      <button type="submit" className="acc-submit-btn" disabled={photoState.submitting}>
+                        {photoState.submitting ? 'Salvando...' : 'Salvar foto'}
+                      </button>
+                      {user.photoURL && (
+                        <button type="button" className="acc-photo-remove" disabled={photoState.submitting} onClick={() => void savePhoto(null)}>
+                          Remover foto
+                        </button>
+                      )}
+                    </div>
+                  </form>
+                )}
+                {photoState.success && <p className="acc-success" role="status"><CheckIcon /> Foto de perfil atualizada!</p>}
 
                 <div className="acc-divider" />
 
