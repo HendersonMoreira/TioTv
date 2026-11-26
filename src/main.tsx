@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
+import { CookieNotice } from './components/CookieNotice'
 
 console.log(
   '%c' +
@@ -37,5 +38,6 @@ if (typeof window !== 'undefined') {
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />
+    <CookieNotice />
   </StrictMode>,
 )
