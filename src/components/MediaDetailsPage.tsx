@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getBackdropUrlBySize, getPosterUrlBySize, getTitle, isComingSoon, loadMediaDetails, type MediaDetails } from '../services/api';
+import { getBackdropUrlBySize, getPosterUrlBySize, getTitle, isComingSoon, loadMediaDetails, loadTrailerKey, type MediaDetails } from '../services/api';
 import type { MediaItem } from '../types';
 import { ChevronLeft, HeartIcon } from './icons';
 import './MediaDetailsPage.css';
@@ -19,6 +19,7 @@ export function MediaDetailsPage({ id, type, initialItem, isFavorite, onBack, on
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [trailerKey, setTrailerKey] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -37,6 +38,14 @@ export function MediaDetailsPage({ id, type, initialItem, isFavorite, onBack, on
     return () => { active = false; };
   }, [id, type, attempt]);
 
+  useEffect(() => {
+    let active = true;
+    loadTrailerKey(id, type).then((key) => {
+      if (active) setTrailerKey(key);
+    });
+    return () => { active = false; };
+  }, [id, type]);
+
   const item: MediaDetails | null = details
     ? { ...initialItem, ...details, coming_soon: initialItem?.coming_soon }
     : initialItem ?? null;
@@ -47,6 +56,22 @@ export function MediaDetailsPage({ id, type, initialItem, isFavorite, onBack, on
     ? `${Math.floor(runtime / 60) ? `${Math.floor(runtime / 60)}h ` : ''}${runtime % 60 ? `${runtime % 60}min` : ''}`.trim()
     : '';
   const rating = details?.vote_count && details.vote_average ? details.vote_average.toFixed(1) : '';
+  const date = item?.release_date || item?.first_air_date || '';
+  const formattedDate = /^\d{4}-\d{2}-\d{2}$/.test(date)
+    ? `${date.slice(8, 10)}/${date.slice(5, 7)}/${date.slice(0, 4)}`
+    : '';
+  const originalTitle = details?.original_title || details?.original_name;
+  const statusLabels: Record<string, string> = {
+    Released: 'Lançado',
+    'Returning Series': 'Em andamento',
+    Ended: 'Finalizada',
+    Canceled: 'Cancelada',
+    'In Production': 'Em produção',
+    Planned: 'Planejado',
+    'Post Production': 'Pós-produção',
+  };
+  const status = details?.status ? statusLabels[details.status] : undefined;
+  const companies = details?.production_companies?.slice(0, 3).map((company) => company.name).join(', ');
 
   return (
     <main className="media-details-page">
@@ -86,15 +111,6 @@ export function MediaDetailsPage({ id, type, initialItem, isFavorite, onBack, on
                 {rating && <span className="media-details-rating">★ {rating} / 10</span>}
               </div>
               {type === 'movie' && isComingSoon(item) && <span className="media-details-soon">Em breve no Brasil</span>}
-              {details?.genres && details.genres.length > 0 && (
-                <div className="media-details-genres">
-                  {details.genres.map((genre) => <span key={genre.id}>{genre.name}</span>)}
-                </div>
-              )}
-              <div className="media-details-synopsis">
-                <h2>Sinopse</h2>
-                <p>{item.overview || 'Sinopse indisponível para este título.'}</p>
-              </div>
               <div className="media-details-actions">
                 <button type="button" className="media-details-play" onClick={() => onPlay(item, type)}>
                   <span aria-hidden="true">▶</span> Assistir agora
@@ -102,9 +118,39 @@ export function MediaDetailsPage({ id, type, initialItem, isFavorite, onBack, on
                 <button type="button" className="media-details-favorite" aria-pressed={isFavorite} onClick={() => onToggleFavorite(id)}>
                   <HeartIcon /> {isFavorite ? 'Nos favoritos' : 'Adicionar aos favoritos'}
                 </button>
+                {trailerKey && (
+                  <a className="media-details-trailer" href={`https://www.youtube.com/watch?v=${encodeURIComponent(trailerKey)}`} target="_blank" rel="noopener noreferrer">
+                    ▶ Ver trailer
+                  </a>
+                )}
+              </div>
+              <div className="media-details-synopsis">
+                <h2>Sinopse</h2>
+                <p>{item.overview || 'Sinopse indisponível para este título.'}</p>
               </div>
               {loading && <p className="media-details-loading" role="status">Carregando mais informações...</p>}
             </div>
+            <aside className="media-details-facts" aria-label="Informações do título">
+              <h2>Informações</h2>
+              <dl>
+                <div><dt>Tipo</dt><dd>{type === 'movie' ? 'Filme' : type === 'anime' ? 'Anime' : 'Série'}</dd></div>
+                {originalTitle && originalTitle !== title && <div><dt>Título original</dt><dd>{originalTitle}</dd></div>}
+                {formattedDate && <div><dt>Lançamento</dt><dd>{formattedDate}</dd></div>}
+                {status && <div><dt>Status</dt><dd>{status}</dd></div>}
+                {duration && <div><dt>Duração</dt><dd>{duration}</dd></div>}
+                {details?.number_of_seasons ? <div><dt>Temporadas</dt><dd>{details.number_of_seasons}</dd></div> : null}
+                {details?.number_of_episodes ? <div><dt>Episódios</dt><dd>{details.number_of_episodes}</dd></div> : null}
+                {companies && <div><dt>Produção</dt><dd>{companies}</dd></div>}
+                {details?.genres && details.genres.length > 0 && (
+                  <div>
+                    <dt>Gêneros</dt>
+                    <dd className="media-details-genres">
+                      {details.genres.map((genre) => <span key={genre.id}>{genre.name}</span>)}
+                    </dd>
+                  </div>
+                )}
+              </dl>
+            </aside>
           </div>
         )}
       </div>

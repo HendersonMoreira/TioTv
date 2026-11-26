@@ -59,6 +59,10 @@ export type MediaDetails = MediaItem & {
   runtime?: number;
   number_of_seasons?: number;
   number_of_episodes?: number;
+  original_title?: string;
+  original_name?: string;
+  status?: string;
+  production_companies?: { id: number; name: string }[];
 };
 
 export async function loadMediaDetails(id: number, type: 'movie' | 'tv' | 'anime'): Promise<MediaDetails> {
